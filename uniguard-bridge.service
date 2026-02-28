@@ -1,0 +1,39 @@
+[Unit]
+Description=Uniguard Pro Bridge — RTSP to HLS Streaming Gateway
+Documentation=https://github.com/your-org/uniguard-pro-bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/uniguard-bridge
+ExecStart=/opt/uniguard-bridge/venv/bin/uvicorn app.main:app \
+          --host 0.0.0.0 \
+          --port 8080 \
+          --workers 1 \
+          --log-level info
+
+# Restart policy — recover from transient failures automatically
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Run as a low-privilege user
+User=www-data
+Group=www-data
+
+# Tighten the process environment
+NoNewPrivileges=true
+PrivateTmp=true
+
+# HLS output and database must be writable
+ReadWritePaths=/opt/uniguard-bridge/hls /opt/uniguard-bridge/uniguard.db
+
+# Environment overrides (edit these or use /opt/uniguard-bridge/.env)
+Environment="UGBRIDGE_HOST=0.0.0.0"
+Environment="UGBRIDGE_PORT=8080"
+Environment="UGBRIDGE_STREAM_TIMEOUT_SECONDS=300"
+
+[Install]
+WantedBy=multi-user.target
