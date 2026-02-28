@@ -3,7 +3,7 @@
 # Uniguard Pro Bridge — Raspberry Pi Installer
 #
 # One-liner install from any internet-connected Pi:
-#   curl -sSL https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/main/install.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/master/install.sh | sudo bash
 #
 # Or clone first and run locally:
 #   git clone https://github.com/uniguardpro-monitoring/uniguard-pro-bridge.git
@@ -69,7 +69,7 @@ else
         info "Existing installation found — pulling latest…"
         cd "${APP_DIR}"
         git fetch origin
-        git reset --hard origin/main
+        git reset --hard origin/master
     else
         rm -rf "${APP_DIR}"
         git clone "${REPO_URL}" "${APP_DIR}"
@@ -126,5 +126,5 @@ echo "    sudo systemctl restart ${SERVICE_NAME}"
 echo "    journalctl -u ${SERVICE_NAME} -f"
 echo ""
 echo "  To update later:"
-echo "    curl -sSL https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/main/install.sh | sudo bash"
+echo "    curl -sSL https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/master/install.sh | sudo bash"
 echo ""
