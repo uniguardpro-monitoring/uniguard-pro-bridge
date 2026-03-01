@@ -217,7 +217,32 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}" >/dev/null 2>&1
 systemctl restart "${SERVICE_NAME}"
 
-# ── 9. Verify everything is running ──────────────────────────────────────────
+# ── 9. Open firewall port ────────────────────────────────────────────────────
+
+step "Configuring firewall…"
+
+if command -v ufw >/dev/null 2>&1; then
+    UFW_STATUS=$(ufw status 2>/dev/null | head -1) || UFW_STATUS=""
+    if echo "$UFW_STATUS" | grep -qi "active"; then
+        ufw allow 8080/tcp >/dev/null 2>&1
+        info "UFW: opened port 8080/tcp"
+    else
+        info "UFW is installed but inactive — no changes needed"
+    fi
+elif command -v firewall-cmd >/dev/null 2>&1; then
+    # firewalld (some Ubuntu/Debian variants)
+    if systemctl is-active --quiet firewalld 2>/dev/null; then
+        firewall-cmd --permanent --add-port=8080/tcp >/dev/null 2>&1
+        firewall-cmd --reload >/dev/null 2>&1
+        info "firewalld: opened port 8080/tcp"
+    else
+        info "firewalld is installed but inactive — no changes needed"
+    fi
+else
+    info "No firewall detected — port 8080 should be accessible"
+fi
+
+# ── 10. Verify everything is running ─────────────────────────────────────────
 
 step "Verifying installation…"
 
