@@ -84,6 +84,7 @@ class NVRImportRequest(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+    git_commit: Optional[str] = None
     active_streams: int
     ffmpeg_available: bool
     uptime_seconds: float

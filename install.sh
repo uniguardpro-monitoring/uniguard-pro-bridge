@@ -217,7 +217,46 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}" >/dev/null 2>&1
 systemctl restart "${SERVICE_NAME}"
 
-# ── 9. Open firewall port ────────────────────────────────────────────────────
+# ── 9. Install auto-update timer ──────────────────────────────────────────────
+
+step "Installing auto-update timer…"
+
+chmod 755 "${APP_DIR}/update.sh"
+
+cat > "/etc/systemd/system/${SERVICE_NAME}-update.service" <<UNIT
+[Unit]
+Description=Uniguard Pro Bridge — Auto-Update Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${APP_DIR}/update.sh
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=uniguard-update
+UNIT
+
+cat > "/etc/systemd/system/${SERVICE_NAME}-update.timer" <<UNIT
+[Unit]
+Description=Uniguard Pro Bridge — Auto-Update Timer
+
+[Timer]
+OnCalendar=*-*-* 11:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable "${SERVICE_NAME}-update.timer" >/dev/null 2>&1
+systemctl start "${SERVICE_NAME}-update.timer"
+info "Auto-update timer enabled (daily at ~11:00)"
+
+# ── 10. Open firewall port ───────────────────────────────────────────────────
 
 step "Configuring firewall…"
 
@@ -242,7 +281,7 @@ else
     info "No firewall detected — port 8080 should be accessible"
 fi
 
-# ── 10. Verify everything is running ─────────────────────────────────────────
+# ── 11. Verify everything is running ─────────────────────────────────────────
 
 step "Verifying installation…"
 
@@ -281,6 +320,12 @@ echo "    sudo systemctl status  ${SERVICE_NAME}"
 echo "    sudo systemctl restart ${SERVICE_NAME}"
 echo "    journalctl -u ${SERVICE_NAME} -f"
 echo ""
-echo "  Update to latest version:"
-echo "    curl -sSL https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/master/install.sh | sudo bash"
+echo "  Auto-updates (daily at ~11:00):"
+echo "    systemctl status  ${SERVICE_NAME}-update.timer"
+echo "    journalctl -u ${SERVICE_NAME}-update -n 30"
+echo "    sudo ${APP_DIR}/update.sh          # manual update now"
+echo ""
+echo "  Disable/enable auto-updates:"
+echo "    sudo systemctl disable --now ${SERVICE_NAME}-update.timer"
+echo "    sudo systemctl enable  --now ${SERVICE_NAME}-update.timer"
 echo ""

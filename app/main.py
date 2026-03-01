@@ -17,6 +17,7 @@ from .config import settings
 from .database import init_db
 from .services.stream_manager import stream_manager
 from .api import streams, discovery, health
+from .version import get_version
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,7 +48,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Uniguard Pro Bridge",
     description="Lightweight RTSP→HLS streaming gateway for Raspberry Pi",
-    version="1.0.0",
+    version=get_version(),
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
