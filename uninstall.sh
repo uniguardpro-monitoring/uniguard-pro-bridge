@@ -69,6 +69,12 @@ else
     warn "${APP_DIR} not found — already removed?"
 fi
 
+# Clean up HLS temp files
+if [[ -d "/tmp/hls" ]]; then
+    rm -rf /tmp/hls
+    info "Removed /tmp/hls"
+fi
+
 # ── 3. Remove service user ──────────────────────────────────────────────────
 
 step "Removing service user…"
