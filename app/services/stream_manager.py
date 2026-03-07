@@ -96,7 +96,11 @@ class StreamManager:
                 settings.ffmpeg_path,
                 "-loglevel", "error",
                 "-rtsp_transport", "tcp",
-                "-tls_verify", "0",             # Accept self-signed certs (UniFi Protect RTSPS)
+            ]
+            # Only add TLS flag for encrypted RTSPS streams
+            if rtsp_url.lower().startswith("rtsps://"):
+                cmd += ["-tls_verify", "0"]     # Accept self-signed certs (UniFi Protect)
+            cmd += [
                 "-i", rtsp_url,
                 # Copy the H.264 stream as-is -- no CPU-intensive transcoding
                 "-c:v", "copy",
