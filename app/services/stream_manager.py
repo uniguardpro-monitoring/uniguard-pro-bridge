@@ -114,7 +114,7 @@ class StreamManager:
                 "-f", "hls",
                 "-hls_time", str(settings.hls_segment_time),
                 "-hls_list_size", str(settings.hls_list_size),
-                "-hls_flags", "delete_segments+split_by_time",
+                "-hls_flags", "delete_segments",
                 "-hls_segment_type", "mpegts",
                 "-hls_segment_filename", seg_pattern,
                 m3u8,
