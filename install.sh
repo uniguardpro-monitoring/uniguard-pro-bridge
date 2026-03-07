@@ -21,7 +21,7 @@
 #   4. Clones the repo (or copies from local directory if run from a clone)
 #   5. Creates a Python virtual environment and installs packages
 #   6. Generates and installs the systemd service
-#   7. Starts the service and prints the dashboard URL
+#   7. Starts the service and registers with the cloud API
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -126,12 +126,12 @@ if [[ -n "$LOCAL_SOURCE" ]]; then
               --exclude="*.pyc" \
               --exclude=".env" \
               --exclude="hls/" \
-              --exclude="uniguard.db" \
+              --exclude="state.json" \
               --exclude="venv/" \
               "${LOCAL_SOURCE}/" "${APP_DIR}/"
     else
         find "${APP_DIR}" -mindepth 1 -maxdepth 1 \
-             ! -name "hls" ! -name "uniguard.db" ! -name ".env" ! -name "venv" \
+             ! -name "state.json" ! -name ".env" ! -name "venv" \
              -exec rm -rf {} + 2>/dev/null || true
         cp -a "${LOCAL_SOURCE}/." "${APP_DIR}/"
         rm -rf "${APP_DIR}/.git" "${APP_DIR}/venv" 2>/dev/null || true
@@ -168,8 +168,8 @@ info "Python packages installed successfully"
 
 step "Setting up directories and permissions…"
 
-mkdir -p "${APP_DIR}/hls"
-touch "${APP_DIR}/uniguard.db" 2>/dev/null || true
+mkdir -p /tmp/hls
+chown "${SERVICE_USER}:${SERVICE_USER}" /tmp/hls
 
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DIR}"
 info "Ownership set to ${SERVICE_USER}"
@@ -203,11 +203,12 @@ User=${SERVICE_USER}
 Group=${SERVICE_USER}
 
 NoNewPrivileges=true
-PrivateTmp=true
 
 Environment="UGBRIDGE_HOST=0.0.0.0"
 Environment="UGBRIDGE_PORT=8080"
+Environment="UGBRIDGE_HLS_DIR=/tmp/hls"
 Environment="UGBRIDGE_STREAM_TIMEOUT_SECONDS=300"
+Environment="UGBRIDGE_TUNNEL_TOKEN="
 
 [Install]
 WantedBy=multi-user.target
@@ -312,7 +313,13 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}  Uniguard Pro Bridge installed successfully!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "  Dashboard:  http://${LOCAL_IP}:8080"
+echo "  The bridge will register with the cloud API on first start."
+echo "  Set the tunnel token in the systemd environment:"
+echo "    sudo systemctl edit ${SERVICE_NAME}"
+echo "    # Add: Environment=\"UGBRIDGE_TUNNEL_TOKEN=<your-token>\""
+echo "    sudo systemctl restart ${SERVICE_NAME}"
+echo ""
+echo "  Health:  http://${LOCAL_IP}:8080/api/health"
 echo "  API docs:   http://${LOCAL_IP}:8080/api/docs"
 echo ""
 echo "  Manage the service:"
