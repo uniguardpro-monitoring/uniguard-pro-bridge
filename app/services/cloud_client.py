@@ -32,18 +32,22 @@ class CloudClient:
         self._on_config_updated: Optional[Callable[..., Awaitable]] = None
         self._start_time = time.time()
 
-    async def register(self, tunnel_token: str) -> str:
+    async def register(self, tunnel_token: str, max_attempts: int = 0) -> str:
         """
-        POST /register with exponential backoff retry until success.
-        Returns the assigned clientId.
+        POST /register with exponential backoff retry.
+        max_attempts=0 means retry forever (used at startup).
+        max_attempts>0 limits retries (used by /api/setup).
+        Raises RuntimeError if max_attempts exceeded.
         """
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0),
         ) as client:
             delay = 2.0
             max_delay = 60.0
+            attempt = 0
 
-            while True:
+            while max_attempts == 0 or attempt < max_attempts:
+                attempt += 1
                 try:
                     resp = await client.post(
                         f"{settings.cloud_api_url}/register",
@@ -58,6 +62,8 @@ class CloudClient:
                     logger.info("Registered with cloud API, clientId=%s", client_id)
                     return client_id
                 except Exception as exc:
+                    if max_attempts > 0 and attempt >= max_attempts:
+                        raise RuntimeError(f"Registration failed after {attempt} attempts: {exc}")
                     jitter = random.uniform(0, 2)
                     logger.warning(
                         "Registration failed (%s) — retrying in %.1fs",

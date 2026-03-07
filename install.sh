@@ -4,15 +4,15 @@
 #
 # Supported platforms: Raspberry Pi OS, Ubuntu 22.04+, Debian 11+
 #
-# One-liner install (picks up ALL prerequisites automatically):
-#   curl -sSL https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/master/install.sh | sudo bash
+# Install with tunnel token (recommended):
+#   curl -sSL https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/master/install.sh | sudo UGBRIDGE_TUNNEL_TOKEN=<token> bash
 #
-# If curl isn't installed (e.g. Ubuntu Minimal):
-#   wget -qO- https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/master/install.sh | sudo bash
+# Or without token (can be set later via POST /api/setup):
+#   curl -sSL https://raw.githubusercontent.com/uniguardpro-monitoring/uniguard-pro-bridge/master/install.sh | sudo bash
 #
 # Or clone first and run locally:
 #   git clone https://github.com/uniguardpro-monitoring/uniguard-pro-bridge.git
-#   cd uniguard-pro-bridge && sudo ./install.sh
+#   cd uniguard-pro-bridge && sudo UGBRIDGE_TUNNEL_TOKEN=<token> ./install.sh
 #
 # What this does:
 #   1. Checks the platform is Debian/Ubuntu with apt-get
@@ -208,7 +208,7 @@ Environment="UGBRIDGE_HOST=0.0.0.0"
 Environment="UGBRIDGE_PORT=8080"
 Environment="UGBRIDGE_HLS_DIR=/tmp/hls"
 Environment="UGBRIDGE_STREAM_TIMEOUT_SECONDS=300"
-Environment="UGBRIDGE_TUNNEL_TOKEN="
+Environment="UGBRIDGE_TUNNEL_TOKEN=${UGBRIDGE_TUNNEL_TOKEN:-}"
 
 [Install]
 WantedBy=multi-user.target
@@ -313,11 +313,12 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}  Uniguard Pro Bridge installed successfully!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "  The bridge will register with the cloud API on first start."
-echo "  Set the tunnel token in the systemd environment:"
-echo "    sudo systemctl edit ${SERVICE_NAME}"
-echo "    # Add: Environment=\"UGBRIDGE_TUNNEL_TOKEN=<your-token>\""
-echo "    sudo systemctl restart ${SERVICE_NAME}"
+if [[ -n "${UGBRIDGE_TUNNEL_TOKEN:-}" ]]; then
+    echo "  Tunnel token configured — the bridge will register automatically."
+else
+    echo "  No tunnel token provided. The web app can configure it via:"
+    echo "    POST http://${LOCAL_IP}:8080/api/setup  {\"tunnelToken\": \"<token>\"}"
+fi
 echo ""
 echo "  Health:  http://${LOCAL_IP}:8080/api/health"
 echo "  API docs:   http://${LOCAL_IP}:8080/api/docs"

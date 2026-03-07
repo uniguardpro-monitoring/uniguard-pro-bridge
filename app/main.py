@@ -16,7 +16,7 @@ from .services.stream_manager import stream_manager
 from .services.cloud_client import cloud_client
 from .services.camera_registry import camera_registry
 from .services.state_store import state_store
-from .api import streams, health
+from .api import streams, health, setup
 from .version import get_version
 
 logging.basicConfig(
@@ -149,3 +149,4 @@ if STATIC_DIR.exists():
 
 app.include_router(streams.router, prefix="/api")
 app.include_router(health.router, prefix="/api")
+app.include_router(setup.router, prefix="/api")
