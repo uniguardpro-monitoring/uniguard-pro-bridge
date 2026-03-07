@@ -199,6 +199,27 @@ body {
   text-overflow: ellipsis;
 }
 
+.camera-rtsp {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.rtsp-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(46,165,255,.12);
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: .3px;
+  margin-right: 4px;
+}
+
 .camera-footer {
   display: flex;
   align-items: center;

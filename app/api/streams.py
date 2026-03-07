@@ -22,6 +22,8 @@ def list_cameras():
                 "name": cam.name,
                 "has_high": bool(cam.rtsp_url),
                 "has_low": bool(cam.rtsp_url_low),
+                "rtsp_high": cam.rtsp_url or None,
+                "rtsp_low": cam.rtsp_url_low or None,
                 "streams": status,
             })
     return result

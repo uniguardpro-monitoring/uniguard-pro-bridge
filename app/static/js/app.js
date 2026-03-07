@@ -99,6 +99,8 @@ function buildCameraCard(cam) {
     <div class="camera-card-body">
       <div class="camera-name" title="${escHtml(cam.name)}">${escHtml(cam.name)}</div>
       <div class="camera-meta" title="${cam.id}">${cam.id}</div>
+      ${cam.rtsp_high ? `<div class="camera-rtsp" title="${escHtml(cam.rtsp_high)}"><span class="rtsp-label">HIGH</span> ${escHtml(cam.rtsp_high)}</div>` : ''}
+      ${cam.rtsp_low  ? `<div class="camera-rtsp" title="${escHtml(cam.rtsp_low)}"><span class="rtsp-label">LOW</span> ${escHtml(cam.rtsp_low)}</div>` : ''}
     </div>
     <div class="camera-footer">
       <div class="channel-badges">
