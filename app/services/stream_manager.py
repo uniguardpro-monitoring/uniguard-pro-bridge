@@ -215,13 +215,19 @@ class StreamManager:
 
             if stream.process.poll() is not None:
                 stream.status = "error"
-                stderr_bytes = stream.process.stderr.read(512) if stream.process.stderr else b""
+                stderr_bytes = stream.process.stderr.read(2048) if stream.process.stderr else b""
+                stderr_text = stderr_bytes.decode(errors="replace").strip()
                 logger.error(
-                    "FFmpeg for %s exited early. stderr: %s",
-                    key,
-                    stderr_bytes.decode(errors="replace").strip(),
+                    "FFmpeg for %s exited early (code %d). stderr: %s",
+                    key, stream.process.returncode, stderr_text,
                 )
-                return
+                # Clean up the dead stream
+                async with self._lock:
+                    await self._terminate(key)
+                raise RuntimeError(
+                    f"FFmpeg exited immediately (code {stream.process.returncode}): "
+                    f"{stderr_text or 'no output'}"
+                )
 
             if m3u8.exists() and m3u8.stat().st_size > 0:
                 stream.status = "streaming"
