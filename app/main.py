@@ -38,13 +38,13 @@ async def _on_config_updated(cameras: list) -> None:
     """Called by cloud_client when config poll receives a new camera list."""
     added, removed, updated = camera_registry.update_from_config(cameras)
 
-    # Stop streams for removed cameras
+    # Stop all channel streams for removed cameras
     for cam_id in removed:
-        await stream_manager.stop_stream(cam_id)
+        await stream_manager.stop_camera_streams(cam_id)
 
-    # Stop streams for cameras whose RTSP URL changed (will restart on next request)
+    # Stop all channel streams for cameras whose RTSP URL changed (will restart on next request)
     for cam_id in updated:
-        await stream_manager.stop_stream(cam_id)
+        await stream_manager.stop_camera_streams(cam_id)
 
     if added or removed or updated:
         logger.info(
@@ -132,12 +132,13 @@ _HLS_MIME = {
 }
 
 
-@app.get("/hls/{camera_id}/{filename}")
-async def serve_hls_file(camera_id: str, filename: str):
+@app.get("/hls/{camera_id}/{channel}/{filename}")
+async def serve_hls_file(camera_id: str, channel: str, filename: str):
     """Serve HLS playlist and segment files with correct Content-Type."""
-    stream_manager.touch_activity(camera_id)
+    stream_key = f"{camera_id}/{channel}"
+    stream_manager.touch_activity(stream_key)
 
-    file_path = (HLS_DIR / camera_id / filename).resolve()
+    file_path = (HLS_DIR / camera_id / channel / filename).resolve()
 
     # Path-traversal guard
     if not str(file_path).startswith(str(HLS_DIR.resolve())):

@@ -24,9 +24,9 @@ async def _on_config_updated(cameras: list) -> None:
     added, removed, updated = camera_registry.update_from_config(cameras)
 
     for cam_id in removed:
-        await stream_manager.stop_stream(cam_id)
+        await stream_manager.stop_camera_streams(cam_id)
     for cam_id in updated:
-        await stream_manager.stop_stream(cam_id)
+        await stream_manager.stop_camera_streams(cam_id)
 
     if added or removed or updated:
         logger.info(

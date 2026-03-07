@@ -17,6 +17,7 @@ class CameraConfig:
     camera_id: str
     name: str
     rtsp_url: str
+    rtsp_url_low: str = ""
     segment_duration: int = 2
 
 
@@ -52,11 +53,13 @@ class CameraRegistry:
                 camera_id=cid,
                 name=cam_dict.get("name", ""),
                 rtsp_url=cam_dict["rtsp_url"],
+                rtsp_url_low=cam_dict.get("rtsp_url_low", ""),
                 segment_duration=cam_dict.get("segment_duration", 2),
             )
             if cid in retained:
                 old = self._cameras[cid]
-                if old.rtsp_url != new_config.rtsp_url:
+                if (old.rtsp_url != new_config.rtsp_url
+                        or old.rtsp_url_low != new_config.rtsp_url_low):
                     updated.add(cid)
             self._cameras[cid] = new_config
 
