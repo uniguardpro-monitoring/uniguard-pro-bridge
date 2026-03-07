@@ -7,8 +7,9 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
@@ -118,27 +119,39 @@ app.add_middleware(
 )
 
 
-# -- HLS activity tracking middleware ------------------------------------------
+# -- HLS file serving ----------------------------------------------------------
+#
+# Served as a regular route (not StaticFiles) so that:
+#   - Content-Type is explicitly correct for .m3u8 and .ts
+#   - CORSMiddleware automatically applies CORS headers
+#   - Activity tracking resets the idle timer per camera
 
-@app.middleware("http")
-async def track_hls_activity(request: Request, call_next):
-    """
-    Any request for an HLS file (playlist or segment) resets that stream's
-    idle timer, preventing premature shutdown while a client is watching.
-    """
-    path = request.url.path
-    if path.startswith("/hls/"):
-        parts = path.split("/")
-        if len(parts) >= 3:
-            camera_id = parts[2]
-            stream_manager.touch_activity(camera_id)
-    return await call_next(request)
+_HLS_MIME = {
+    ".m3u8": "application/vnd.apple.mpegurl",
+    ".ts":   "video/mp2t",
+}
+
+
+@app.get("/hls/{camera_id}/{filename}")
+async def serve_hls_file(camera_id: str, filename: str):
+    """Serve HLS playlist and segment files with correct Content-Type."""
+    stream_manager.touch_activity(camera_id)
+
+    file_path = (HLS_DIR / camera_id / filename).resolve()
+
+    # Path-traversal guard
+    if not str(file_path).startswith(str(HLS_DIR.resolve())):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    ext = file_path.suffix.lower()
+    media_type = _HLS_MIME.get(ext, "application/octet-stream")
+    return FileResponse(str(file_path), media_type=media_type)
 
 
 # -- Static mounts -------------------------------------------------------------
-
-# HLS output files — served by FFmpeg, consumed by HLS.js
-app.mount("/hls", StaticFiles(directory=str(HLS_DIR)), name="hls")
 
 # Debug SPA (optional — kept for local troubleshooting)
 if STATIC_DIR.exists():

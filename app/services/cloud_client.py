@@ -32,6 +32,11 @@ class CloudClient:
         self._on_config_updated: Optional[Callable[..., Awaitable]] = None
         self._start_time = time.time()
 
+    @staticmethod
+    def _base_url() -> str:
+        """Return the cloud API base URL with no trailing slash."""
+        return settings.api_url.rstrip("/")
+
     async def register(self, tunnel_token: str, max_attempts: int = 0) -> str:
         """
         POST /register with exponential backoff retry.
@@ -50,7 +55,7 @@ class CloudClient:
                 attempt += 1
                 try:
                     resp = await client.post(
-                        f"{settings.cloud_api_url}/register",
+                        f"{self._base_url()}/register",
                         json={
                             "tunnelToken": tunnel_token,
                             "version": get_version(),
@@ -122,7 +127,7 @@ class CloudClient:
     async def _poll_config(self) -> None:
         try:
             resp = await self._client.get(
-                f"{settings.cloud_api_url}/config",
+                f"{self._base_url()}/config",
                 params={"clientId": self._client_id},
             )
             resp.raise_for_status()
@@ -158,7 +163,7 @@ class CloudClient:
     async def _send_heartbeat(self) -> None:
         try:
             resp = await self._client.post(
-                f"{settings.cloud_api_url}/heartbeat",
+                f"{self._base_url()}/heartbeat",
                 json={
                     "clientId": self._client_id,
                     "version": get_version(),

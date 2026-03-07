@@ -16,7 +16,6 @@ class SetupRequest(BaseModel):
 
 
 class SetupResponse(BaseModel):
-    clientId: str
     status: str
 
 
@@ -44,9 +43,9 @@ async def setup_bridge(body: SetupRequest):
     """
     state = state_store.load()
 
-    # If already registered with this token, return existing clientId
+    # If already registered with this token, no-op success
     if state.client_id and state.tunnel_token == body.tunnelToken:
-        return SetupResponse(clientId=state.client_id, status="already_registered")
+        return SetupResponse(status="ok")
 
     # Stop existing cloud client if running (re-registration)
     await cloud_client.stop()
@@ -69,4 +68,4 @@ async def setup_bridge(body: SetupRequest):
     )
 
     logger.info("Bridge setup complete via API, clientId=%s", client_id)
-    return SetupResponse(clientId=client_id, status="registered")
+    return SetupResponse(status="ok")

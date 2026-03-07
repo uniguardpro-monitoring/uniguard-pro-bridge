@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
 
-    # Cloud API
-    cloud_api_url: str = "https://olzhvzijbmaeqxbmemgt.supabase.co/functions/v1/bridge-api"
+    # Cloud API  (env: UGBRIDGE_API_URL)
+    api_url: str = "https://olzhvzijbmaeqxbmemgt.supabase.co/functions/v1/bridge-api"
     tunnel_token: str = ""
     state_file: str = str(BASE_DIR / "state.json")
     config_poll_interval: int = 60
