@@ -24,8 +24,8 @@ class Settings(BaseSettings):
 
     # FFmpeg
     ffmpeg_path: str = "ffmpeg"
-    hls_segment_time: int = 1               # Seconds per HLS segment (lower = less latency)
-    hls_list_size: int = 3                  # Segments kept in playlist
+    hls_segment_time: int = 2               # Seconds per HLS segment
+    hls_list_size: int = 3                  # Segments kept in playlist (lower = less latency)
 
     class Config:
         env_file = ".env"
