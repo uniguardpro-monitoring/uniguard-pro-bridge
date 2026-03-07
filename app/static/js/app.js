@@ -154,8 +154,12 @@ function initPlayer(hlsUrl) {
   if (typeof Hls !== 'undefined' && Hls.isSupported()) {
     hlsInstance = new Hls({
       enableWorker: false,
-      lowLatencyMode: false,
-      backBufferLength: 10,
+      lowLatencyMode: true,
+      backBufferLength: 0,
+      liveSyncDurationCount: 1,        // Stay 1 segment behind live edge
+      liveMaxLatencyDurationCount: 3,  // Max 3 segments behind before seeking forward
+      maxBufferLength: 2,              // Buffer max 2s ahead
+      maxMaxBufferLength: 3,
     });
     hlsInstance.loadSource(hlsUrl);
     hlsInstance.attachMedia(video);

@@ -95,7 +95,11 @@ class StreamManager:
             cmd = [
                 settings.ffmpeg_path,
                 "-loglevel", "error",
+                # Low-latency input: reduce RTSP and demuxer buffering
+                "-fflags", "nobuffer",
+                "-flags", "low_delay",
                 "-rtsp_transport", "tcp",
+                "-rtsp_flags", "prefer_tcp",
             ]
             # Only add TLS flag for encrypted RTSPS streams
             if rtsp_url.lower().startswith("rtsps://"):
@@ -110,7 +114,7 @@ class StreamManager:
                 "-f", "hls",
                 "-hls_time", str(settings.hls_segment_time),
                 "-hls_list_size", str(settings.hls_list_size),
-                "-hls_flags", "delete_segments",
+                "-hls_flags", "delete_segments+split_by_time",
                 "-hls_segment_type", "mpegts",
                 "-hls_segment_filename", seg_pattern,
                 m3u8,
