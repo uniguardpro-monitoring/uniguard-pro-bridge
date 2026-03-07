@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Uniguard Pro Bridge</title>
-  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 
@@ -16,28 +16,21 @@
       <polyline points="9 12 11 14 15 10"/>
     </svg>
     <span class="brand-name">Uniguard Pro Bridge</span>
-    <span class="brand-tag">RTSP → HLS Gateway</span>
+    <span class="brand-tag">Debug Console</span>
   </div>
   <div class="header-status">
     <span class="status-dot" id="health-dot"></span>
     <span id="health-label">Connecting…</span>
     <span class="status-sep">|</span>
-    <span id="active-streams-label">0 active streams</span>
+    <span id="version-label"></span>
+    <span class="status-sep">|</span>
+    <span id="active-streams-label">0 streams</span>
   </div>
 </header>
 
-<!-- ═══════════════════════  NAV  ═══════════════════════════ -->
-<nav class="nav">
-  <button class="nav-btn active" data-view="cameras">Cameras</button>
-  <button class="nav-btn" data-view="discovery">Discovery</button>
-  <button class="nav-btn" data-view="add">Add Manually</button>
-</nav>
-
 <!-- ═══════════════════════  MAIN  ══════════════════════════ -->
 <main class="main">
-
-  <!-- ── CAMERAS view ─────────────────────────────────────── -->
-  <section id="view-cameras" class="view active">
+  <section class="view active">
     <div class="section-header">
       <h2>Cameras</h2>
       <button class="btn btn-sm" onclick="loadCameras()">↺ Refresh</button>
@@ -46,55 +39,6 @@
       <div class="empty-state">Loading cameras…</div>
     </div>
   </section>
-
-  <!-- ── DISCOVERY view ───────────────────────────────────── -->
-  <section id="view-discovery" class="view">
-    <div class="section-header">
-      <h2>LAN Discovery</h2>
-    </div>
-
-    <div class="card scan-card">
-      <h3>Scan Network</h3>
-      <p class="hint">Scans your /24 subnet for UniFi Protect NVRs (port 7441).</p>
-      <div class="row gap-sm">
-        <input id="subnet-input" class="input" type="text" placeholder="Auto-detect (e.g. 192.168.1)" />
-        <button class="btn" id="scan-btn" onclick="scanNetwork()">Scan</button>
-      </div>
-      <div id="scan-results" class="scan-results hidden"></div>
-    </div>
-
-    <div class="section-header mt-lg">
-      <h3>Registered NVRs</h3>
-      <button class="btn btn-sm" onclick="loadNvrs()">↺ Refresh</button>
-    </div>
-    <div id="nvr-list" class="nvr-list">
-      <div class="empty-state">No NVRs registered.</div>
-    </div>
-  </section>
-
-  <!-- ── ADD MANUALLY view ────────────────────────────────── -->
-  <section id="view-add" class="view">
-    <div class="section-header">
-      <h2>Add Camera Manually</h2>
-    </div>
-    <div class="card" style="max-width:500px">
-      <form id="add-camera-form" onsubmit="addCameraManual(event)">
-        <div class="form-group">
-          <label>Camera Name</label>
-          <input class="input" type="text" id="cam-name" placeholder="Front Door" required />
-        </div>
-        <div class="form-group">
-          <label>RTSP URL</label>
-          <input class="input" type="text" id="cam-rtsp"
-            placeholder="rtsps://192.168.1.1:7441/abc123" required />
-          <span class="hint">UniFi format: rtsps://&lt;NVR_IP&gt;:7441/&lt;rtsp_alias&gt;</span>
-        </div>
-        <button type="submit" class="btn btn-primary mt-sm">Add Camera</button>
-      </form>
-      <div id="add-result" class="alert hidden mt-sm"></div>
-    </div>
-  </section>
-
 </main>
 
 <!-- ═══════════════════════  PLAYER MODAL  ════════════════════════ -->
@@ -103,6 +47,7 @@
     <div class="modal-header">
       <span id="player-title">Camera</span>
       <div class="modal-actions">
+        <span id="channel-badge" class="badge badge-channel">HIGH</span>
         <span id="stream-status-badge" class="badge badge-starting">Starting…</span>
         <button class="icon-btn" onclick="stopAndClose()" title="Stop &amp; Close">&#x2715;</button>
       </div>
@@ -121,31 +66,8 @@
   </div>
 </div>
 
-<!-- ═══════════════════════  NVR IMPORT MODAL  ═════════════════════ -->
-<div id="import-modal" class="modal hidden" onclick="closeImportModal(event)">
-  <div class="modal-box modal-sm" onclick="event.stopPropagation()">
-    <div class="modal-header">
-      <span>Import Cameras from NVR</span>
-      <button class="icon-btn" onclick="closeImportModal()">&#x2715;</button>
-    </div>
-    <form onsubmit="submitImport(event)">
-      <input type="hidden" id="import-nvr-id" />
-      <div class="form-group">
-        <label>UniFi Username</label>
-        <input class="input" type="text" id="import-username" placeholder="admin" required />
-      </div>
-      <div class="form-group">
-        <label>Password</label>
-        <input class="input" type="password" id="import-password" required />
-      </div>
-      <div id="import-result" class="alert hidden mt-sm"></div>
-      <button type="submit" class="btn btn-primary mt-sm" id="import-btn">Import Cameras</button>
-    </form>
-  </div>
-</div>
-
-<!-- HLS.js — loaded from CDN (requires internet), falls back to native HLS -->
+<!-- HLS.js — loaded from CDN -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
-<script src="/static/js/app.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

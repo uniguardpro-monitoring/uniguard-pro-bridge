@@ -8,6 +8,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cameras", tags=["cameras"])
 
 
+@router.get("")
+def list_cameras():
+    """List all cameras from the cloud config registry."""
+    ids = camera_registry.all_ids()
+    result = []
+    for cid in ids:
+        cam = camera_registry.get(cid)
+        if cam:
+            status = stream_manager.get_camera_status(cid)
+            result.append({
+                "id": cam.camera_id,
+                "name": cam.name,
+                "has_high": bool(cam.rtsp_url),
+                "has_low": bool(cam.rtsp_url_low),
+                "streams": status,
+            })
+    return result
+
+
 @router.post("/{camera_id}/start/{channel}")
 async def start_stream(camera_id: str, channel: str, request: Request):
     """Start HLS stream for a camera channel (high or low). Returns HLS URL."""

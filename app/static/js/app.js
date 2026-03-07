@@ -1,8 +1,8 @@
 /**
- * Uniguard Pro Bridge — Frontend App
+ * Uniguard Pro Bridge — Debug Console
  *
- * Single-page app.  No framework; pure vanilla JS.
- * Talks to the FastAPI backend at the same origin.
+ * Single-page app for testing camera streams.
+ * Talks to the v2 FastAPI backend at the same origin.
  */
 
 'use strict';
@@ -11,6 +11,7 @@
 
 let cameras = [];
 let activeStreamCameraId = null;
+let activeStreamChannel = null;
 let hlsInstance = null;
 let statusPollTimer = null;
 
@@ -30,36 +31,23 @@ async function api(method, path, body = null) {
   return res.status === 204 ? null : res.json();
 }
 
-const get  = (path)         => api('GET',    path);
-const post = (path, body)   => api('POST',   path, body);
-const del  = (path)         => api('DELETE', path);
-
-// ── Navigation ────────────────────────────────────────────────────────────────
-
-document.querySelectorAll('.nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
-
-    if (btn.dataset.view === 'cameras')   loadCameras();
-    if (btn.dataset.view === 'discovery') loadNvrs();
-  });
-});
+const get  = (path)       => api('GET',  path);
+const post = (path, body) => api('POST', path, body);
 
 // ── Health polling ────────────────────────────────────────────────────────────
 
 async function pollHealth() {
   try {
     const h = await get('/health');
-    const dot   = document.getElementById('health-dot');
-    const label = document.getElementById('health-label');
+    const dot     = document.getElementById('health-dot');
+    const label   = document.getElementById('health-label');
+    const version = document.getElementById('version-label');
     const streams = document.getElementById('active-streams-label');
 
-    dot.className   = `status-dot ${h.ffmpeg_available ? 'ok' : 'error'}`;
-    label.textContent = h.ffmpeg_available ? `ffmpeg ready` : `ffmpeg missing`;
-    streams.textContent = `${h.active_streams} active stream${h.active_streams !== 1 ? 's' : ''}`;
+    dot.className = 'status-dot ok';
+    label.textContent = 'Online';
+    version.textContent = `v${h.version}`;
+    streams.textContent = `${h.active_streams} stream${h.active_streams !== 1 ? 's' : ''}`;
   } catch {
     document.getElementById('health-dot').className = 'status-dot error';
     document.getElementById('health-label').textContent = 'Offline';
@@ -76,37 +64,28 @@ async function loadCameras() {
   try {
     cameras = await get('/cameras');
     if (!cameras.length) {
-      grid.innerHTML = '<div class="empty-state">No cameras found.<br>Use <strong>Discovery</strong> or <strong>Add Manually</strong>.</div>';
+      grid.innerHTML = '<div class="empty-state">No cameras synced from cloud config.<br>Add cameras in the Uniguard Pro web app.</div>';
       return;
     }
-
-    // Fetch statuses concurrently
-    const statuses = await Promise.all(
-      cameras.map(c => get(`/cameras/${c.id}/status`).catch(() => ({ status: 'idle' })))
-    );
-    const statusMap = Object.fromEntries(cameras.map((c, i) => [c.id, statuses[i]]));
-    renderCameraGrid(cameras, statusMap);
+    renderCameraGrid(cameras);
   } catch (e) {
     grid.innerHTML = `<div class="empty-state" style="color:var(--danger)">Error loading cameras: ${e.message}</div>`;
   }
 }
 
-function renderCameraGrid(cams, statusMap) {
+function renderCameraGrid(cams) {
   const grid = document.getElementById('camera-grid');
   grid.innerHTML = '';
-  cams.forEach(cam => {
-    const s = statusMap[cam.id] || { status: 'idle' };
-    grid.appendChild(buildCameraCard(cam, s));
-  });
+  cams.forEach(cam => grid.appendChild(buildCameraCard(cam)));
 }
 
-function buildCameraCard(cam, status) {
+function buildCameraCard(cam) {
   const card = document.createElement('div');
   card.className = 'camera-card';
   card.id = `cam-card-${cam.id}`;
 
-  const badgeClass = status.status;
-  const badgeLabel = status.status.charAt(0).toUpperCase() + status.status.slice(1);
+  const highStatus = cam.streams?.high?.status || 'idle';
+  const lowStatus  = cam.streams?.low?.status  || 'idle';
 
   card.innerHTML = `
     <div class="camera-card-thumb">
@@ -119,13 +98,16 @@ function buildCameraCard(cam, status) {
     </div>
     <div class="camera-card-body">
       <div class="camera-name" title="${escHtml(cam.name)}">${escHtml(cam.name)}</div>
-      <div class="camera-meta" title="${escHtml(cam.rtsp_url)}">${escHtml(cam.rtsp_url)}</div>
+      <div class="camera-meta" title="${cam.id}">${cam.id}</div>
     </div>
     <div class="camera-footer">
-      <span class="stream-badge ${badgeClass}" id="badge-${cam.id}">${badgeLabel}</span>
+      <div class="channel-badges">
+        <span class="stream-badge ${highStatus}" id="badge-${cam.id}-high">${highStatus === 'streaming' ? 'HIGH \u25cf' : 'HIGH'}</span>
+        <span class="stream-badge ${lowStatus}" id="badge-${cam.id}-low">${lowStatus === 'streaming' ? 'LOW \u25cf' : 'LOW'}</span>
+      </div>
       <div class="camera-actions">
-        <button class="btn btn-sm btn-primary" onclick="openStream(${cam.id})">Watch</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteCamera(${cam.id}, event)">✕</button>
+        ${cam.has_high ? `<button class="btn btn-sm btn-primary" onclick="openStream('${escAttr(cam.id)}','high')">High</button>` : ''}
+        ${cam.has_low  ? `<button class="btn btn-sm" onclick="openStream('${escAttr(cam.id)}','low')">Low</button>` : ''}
       </div>
     </div>
   `;
@@ -134,26 +116,28 @@ function buildCameraCard(cam, status) {
 
 // ── Stream player ─────────────────────────────────────────────────────────────
 
-async function openStream(cameraId) {
+async function openStream(cameraId, channel) {
   const cam = cameras.find(c => c.id === cameraId);
   if (!cam) return;
 
   // Show modal immediately with loading state
   activeStreamCameraId = cameraId;
+  activeStreamChannel = channel;
   document.getElementById('player-title').textContent = cam.name;
+  document.getElementById('channel-badge').textContent = channel.toUpperCase();
   document.getElementById('stream-status-badge').className = 'badge badge-starting';
-  document.getElementById('stream-status-badge').textContent = 'Starting…';
+  document.getElementById('stream-status-badge').textContent = 'Starting\u2026';
   document.getElementById('hls-url-display').textContent = '';
-  document.getElementById('overlay-msg').textContent = 'Starting stream…';
+  document.getElementById('overlay-msg').textContent = 'Starting stream\u2026';
   showOverlay(true);
   showModal('player-modal');
 
   try {
-    const result = await post(`/cameras/${cameraId}/start`);
+    const result = await post(`/cameras/${cameraId}/start/${channel}`);
     const hlsUrl = result.hls_url;
     document.getElementById('hls-url-display').textContent = hlsUrl;
     initPlayer(hlsUrl);
-    startStatusPoll(cameraId);
+    startStatusPoll(cameraId, channel);
   } catch (e) {
     document.getElementById('overlay-msg').textContent = `Failed: ${e.message}`;
     document.getElementById('stream-status-badge').className = 'badge badge-error';
@@ -167,7 +151,7 @@ function initPlayer(hlsUrl) {
 
   if (typeof Hls !== 'undefined' && Hls.isSupported()) {
     hlsInstance = new Hls({
-      enableWorker: false,       // Simpler for local LAN
+      enableWorker: false,
       lowLatencyMode: false,
       backBufferLength: 10,
     });
@@ -181,7 +165,7 @@ function initPlayer(hlsUrl) {
     hlsInstance.on(Hls.Events.ERROR, (_, data) => {
       if (data.fatal) {
         updateBadge('error');
-        document.getElementById('overlay-msg').textContent = 'Stream error — check camera/RTSP URL.';
+        document.getElementById('overlay-msg').textContent = 'Stream error \u2014 check camera/RTSP URL.';
         showOverlay(true);
       }
     });
@@ -208,14 +192,16 @@ function destroyPlayer() {
   video.src = '';
 }
 
-function startStatusPoll(cameraId) {
+function startStatusPoll(cameraId, channel) {
   clearInterval(statusPollTimer);
   statusPollTimer = setInterval(async () => {
     if (!activeStreamCameraId) { clearInterval(statusPollTimer); return; }
     try {
       const s = await get(`/cameras/${cameraId}/status`);
-      updateBadge(s.status);
-      updateCardBadge(cameraId, s.status);
+      const chStatus = s[channel]?.status || 'idle';
+      updateBadge(chStatus);
+      updateCardBadge(cameraId, 'high', s.high?.status || 'idle');
+      updateCardBadge(cameraId, 'low',  s.low?.status  || 'idle');
     } catch { /* ignore */ }
   }, 5_000);
 }
@@ -225,7 +211,8 @@ async function stopCurrentStream() {
   try {
     await post(`/cameras/${activeStreamCameraId}/stop`);
   } catch { /* ignore */ }
-  updateCardBadge(activeStreamCameraId, 'idle');
+  updateCardBadge(activeStreamCameraId, 'high', 'idle');
+  updateCardBadge(activeStreamCameraId, 'low',  'idle');
   closePlayer();
 }
 
@@ -236,6 +223,7 @@ function closePlayer(event) {
   destroyPlayer();
   clearInterval(statusPollTimer);
   activeStreamCameraId = null;
+  activeStreamChannel = null;
   hideModal('player-modal');
 }
 
@@ -250,199 +238,14 @@ function updateBadge(status) {
   badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function updateCardBadge(cameraId, status) {
-  const badge = document.getElementById(`badge-${cameraId}`);
+function updateCardBadge(cameraId, channel, status) {
+  const badge = document.getElementById(`badge-${cameraId}-${channel}`);
   if (badge) {
     badge.className = `stream-badge ${status}`;
-    badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    badge.textContent = status === 'streaming'
+      ? `${channel.toUpperCase()} \u25cf`
+      : channel.toUpperCase();
   }
-}
-
-// ── Delete camera ─────────────────────────────────────────────────────────────
-
-async function deleteCamera(cameraId, event) {
-  event.stopPropagation();
-  if (!confirm('Remove this camera?')) return;
-  try {
-    await del(`/cameras/${cameraId}`);
-    loadCameras();
-  } catch (e) {
-    alert(`Error: ${e.message}`);
-  }
-}
-
-// ── Add camera manually ───────────────────────────────────────────────────────
-
-async function addCameraManual(event) {
-  event.preventDefault();
-  const name    = document.getElementById('cam-name').value.trim();
-  const rtspUrl = document.getElementById('cam-rtsp').value.trim();
-  const result  = document.getElementById('add-result');
-
-  result.className = 'alert hidden';
-  try {
-    await post('/cameras', { name, rtsp_url: rtspUrl });
-    result.className = 'alert alert-success';
-    result.textContent = `Camera "${name}" added successfully.`;
-    result.classList.remove('hidden');
-    document.getElementById('add-camera-form').reset();
-  } catch (e) {
-    result.className = 'alert alert-error';
-    result.textContent = `Error: ${e.message}`;
-    result.classList.remove('hidden');
-  }
-}
-
-// ── Discovery view ────────────────────────────────────────────────────────────
-
-async function loadNvrs() {
-  const list = document.getElementById('nvr-list');
-  list.innerHTML = '<div class="empty-state">Loading…</div>';
-  try {
-    const nvrs = await get('/nvrs');
-    if (!nvrs.length) {
-      list.innerHTML = '<div class="empty-state">No NVRs registered. Run a scan to find devices.</div>';
-      return;
-    }
-    list.innerHTML = '';
-    nvrs.forEach(nvr => list.appendChild(buildNvrCard(nvr)));
-  } catch (e) {
-    list.innerHTML = `<div class="empty-state" style="color:var(--danger)">Error: ${e.message}</div>`;
-  }
-}
-
-function buildNvrCard(nvr) {
-  const card = document.createElement('div');
-  card.className = 'nvr-card';
-  const verified = nvr.api_verified
-    ? '<span class="stream-badge streaming">Verified</span>'
-    : '<span class="stream-badge idle">Unverified</span>';
-
-  card.innerHTML = `
-    <div class="nvr-info">
-      <div class="nvr-name">${escHtml(nvr.name)} ${verified}</div>
-      <div class="nvr-ip">${escHtml(nvr.ip_address)}:${nvr.rtsp_port}</div>
-    </div>
-    <div class="nvr-actions">
-      <button class="btn btn-sm btn-primary" onclick="openImportModal(${nvr.id})">Import Cameras</button>
-      <button class="btn btn-sm btn-danger"  onclick="deleteNvr(${nvr.id})">Remove</button>
-    </div>
-  `;
-  return card;
-}
-
-async function scanNetwork() {
-  const btn     = document.getElementById('scan-btn');
-  const results = document.getElementById('scan-results');
-  const subnet  = document.getElementById('subnet-input').value.trim() || null;
-
-  btn.textContent = 'Scanning…';
-  btn.disabled = true;
-  results.innerHTML = '';
-  results.classList.remove('hidden');
-
-  try {
-    const devices = await post('/discovery/scan', { subnet });
-    btn.textContent = 'Scan';
-    btn.disabled = false;
-
-    if (!devices.length) {
-      results.innerHTML = '<div class="hint">No devices found on port 7441.</div>';
-      return;
-    }
-
-    results.innerHTML = `<div class="hint">${devices.length} device(s) found:</div>`;
-    devices.forEach(d => {
-      const item = document.createElement('div');
-      item.className = 'scan-result-item';
-      item.innerHTML = `
-        <div>
-          <span class="scan-ip">${escHtml(d.ip)}</span>
-          <span class="scan-port"> :${d.port}</span>
-        </div>
-        <button class="btn btn-sm btn-primary" onclick="openImportModalByIp('${escHtml(d.ip)}')">Import Cameras</button>
-      `;
-      results.appendChild(item);
-    });
-
-    // Refresh NVR list to show newly auto-created entries
-    loadNvrs();
-  } catch (e) {
-    btn.textContent = 'Scan';
-    btn.disabled = false;
-    results.innerHTML = `<div class="hint" style="color:var(--danger)">Scan failed: ${e.message}</div>`;
-  }
-}
-
-async function deleteNvr(nvrId) {
-  if (!confirm('Remove this NVR and all its cameras?')) return;
-  try {
-    await del(`/nvrs/${nvrId}`);
-    loadNvrs();
-  } catch (e) {
-    alert(`Error: ${e.message}`);
-  }
-}
-
-// ── Import modal ──────────────────────────────────────────────────────────────
-
-function openImportModal(nvrId) {
-  document.getElementById('import-nvr-id').value = nvrId;
-  document.getElementById('import-username').value = '';
-  document.getElementById('import-password').value = '';
-  document.getElementById('import-result').className = 'alert hidden';
-  document.getElementById('import-btn').textContent = 'Import Cameras';
-  showModal('import-modal');
-}
-
-async function openImportModalByIp(ip) {
-  // Find NVR by IP from the current NVR list (already registered by scan)
-  try {
-    const nvrs = await get('/nvrs');
-    const nvr = nvrs.find(n => n.ip_address === ip);
-    if (nvr) {
-      openImportModal(nvr.id);
-    } else {
-      alert('NVR not found in database. Try refreshing NVR list.');
-    }
-  } catch (e) {
-    alert(`Error: ${e.message}`);
-  }
-}
-
-async function submitImport(event) {
-  event.preventDefault();
-  const nvrId    = document.getElementById('import-nvr-id').value;
-  const username = document.getElementById('import-username').value;
-  const password = document.getElementById('import-password').value;
-  const result   = document.getElementById('import-result');
-  const btn      = document.getElementById('import-btn');
-
-  btn.textContent = 'Importing…';
-  btn.disabled = true;
-  result.className = 'alert hidden';
-
-  try {
-    const cams = await post(`/nvrs/${nvrId}/import`, { username, password });
-    result.className = 'alert alert-success';
-    result.textContent = `Imported ${cams.length} camera(s) successfully.`;
-    result.classList.remove('hidden');
-    btn.textContent = 'Import Cameras';
-    btn.disabled = false;
-    // Reload camera list if on cameras view
-    loadCameras();
-  } catch (e) {
-    result.className = 'alert alert-error';
-    result.textContent = `Error: ${e.message}`;
-    result.classList.remove('hidden');
-    btn.textContent = 'Import Cameras';
-    btn.disabled = false;
-  }
-}
-
-function closeImportModal(event) {
-  if (event && event.target !== document.getElementById('import-modal')) return;
-  hideModal('import-modal');
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
@@ -457,6 +260,12 @@ function escHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escAttr(str) {
+  return String(str)
+    .replace(/'/g, "\\'")
     .replace(/"/g, '&quot;');
 }
 
