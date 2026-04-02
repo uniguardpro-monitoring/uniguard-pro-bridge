@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Dealers - ARC{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-white">Dealer Management</h1>
+    <button onclick="document.getElementById('addDealerModal').showModal()"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition flex items-center space-x-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        <span>Add Dealer</span>
+    </button>
+</div>
+
+<!-- Dealers Table -->
+<div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="text-left text-gray-400 text-sm border-b border-gray-700">
+                    <th class="px-4 py-3">Prefix</th>
+                    <th class="px-4 py-3">Name</th>
+                    <th class="px-4 py-3 hidden md:table-cell">Phone</th>
+                    <th class="px-4 py-3">Email / Login</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                {% for d in dealers %}
+                <tr class="hover:bg-gray-700/50" x-data="{ editing: false }">
+                    <!-- View mode -->
+                    <td x-show="!editing" class="px-4 py-3 font-mono font-bold text-blue-400">{{ d.prefix }}</td>
+                    <td x-show="!editing" class="px-4 py-3 text-white font-medium">{{ d.name }}</td>
+                    <td x-show="!editing" class="px-4 py-3 text-sm text-gray-400 hidden md:table-cell">{{ d.phone or '-' }}</td>
+                    <td x-show="!editing" class="px-4 py-3 text-sm text-gray-400">{{ d.email or '-' }}</td>
+                    <td x-show="!editing" class="px-4 py-3">
+                        {% if d.enabled %}
+                        <span class="bg-green-500/20 text-green-400 text-xs font-semibold px-2 py-0.5 rounded">Active</span>
+                        {% else %}
+                        <span class="bg-red-500/20 text-red-400 text-xs font-semibold px-2 py-0.5 rounded">Disabled</span>
+                        {% endif %}
+                    </td>
+                    <td x-show="!editing" class="px-4 py-3">
+                        <div class="flex space-x-2">
+                            <button @click="editing = true" class="text-gray-400 hover:text-white text-sm">Edit</button>
+                            <form method="POST" action="{{ P }}/dealers/{{ d.id }}/delete"
+                                onsubmit="return confirm('Delete dealer {{ d.name }}? This will also delete their login and unlink their accounts.')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+
+                    <!-- Edit mode (inline) -->
+                    <td x-show="editing" x-cloak colspan="6" class="px-4 py-3">
+                        <form method="POST" action="{{ P }}/dealers/{{ d.id }}/edit" class="flex flex-wrap items-center gap-3">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <span class="font-mono text-blue-400 font-bold">{{ d.prefix }}</span>
+                            <input type="text" name="name" value="{{ d.name }}" required placeholder="Name"
+                                class="bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 text-sm w-36">
+                            <input type="text" name="phone" value="{{ d.phone or '' }}" placeholder="Phone"
+                                class="bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 text-sm w-32">
+                            <input type="text" name="email" value="{{ d.email or '' }}" placeholder="Email"
+                                class="bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 text-sm w-40">
+                            <input type="text" name="notes" value="{{ d.notes or '' }}" placeholder="Notes"
+                                class="bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 text-sm w-36 hidden lg:inline">
+                            <label class="flex items-center space-x-1 text-sm text-gray-400">
+                                <input type="hidden" name="enabled" value="0">
+                                <input type="checkbox" name="enabled" value="1" {% if d.enabled %}checked{% endif %}
+                                    class="rounded bg-gray-700 border-gray-600">
+                                <span>Enabled</span>
+                            </label>
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">Save</button>
+                            <button type="button" @click="editing = false" class="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-sm">Cancel</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if not dealers %}
+    <div class="px-4 py-12 text-center text-gray-500">
+        No dealers registered yet. Add your first dealer to get started.
+    </div>
+    {% endif %}
+</div>
+
+<!-- Add Dealer Modal -->
+<dialog id="addDealerModal" class="bg-gray-800 rounded-lg border border-gray-700 p-6 max-w-lg w-full backdrop:bg-black/50">
+    <h2 class="text-xl font-bold text-white mb-4">Add Dealer</h2>
+    <form method="POST" action="{{ P }}/dealers" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-gray-300 text-sm font-semibold mb-1">Prefix (3 digits)</label>
+                <input type="text" name="prefix" value="{{ next_prefix }}" readonly
+                    class="w-full bg-gray-600 text-gray-300 border border-gray-600 rounded px-3 py-2 font-mono cursor-not-allowed">
+            </div>
+            <div>
+                <label class="block text-gray-300 text-sm font-semibold mb-1">DNIS</label>
+                <input type="text" value="{{ dnis }}" readonly
+                    class="w-full bg-gray-600 text-gray-300 border border-gray-600 rounded px-3 py-2 font-mono cursor-not-allowed">
+                <input type="hidden" name="dnis" value="{{ dnis }}">
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-gray-300 text-sm font-semibold mb-1">Dealer Name</label>
+            <input type="text" name="name" required placeholder="e.g., Acme Security"
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-gray-300 text-sm font-semibold mb-1">Phone</label>
+                <input type="tel" name="phone" placeholder="(555) 123-4567"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-gray-300 text-sm font-semibold mb-1">Email (used as login)</label>
+                <input type="email" name="email" required placeholder="dealer@example.com"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+            </div>
+        </div>
+        <div>
+            <label class="block text-gray-300 text-sm font-semibold mb-1">Notes</label>
+            <textarea name="notes" rows="2" placeholder="Internal notes..."
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500"></textarea>
+        </div>
+
+        <hr class="border-gray-700">
+        <p class="text-sm text-gray-400">The email above will be used as the dealer's login username.</p>
+
+        <div>
+            <label class="block text-gray-300 text-sm font-semibold mb-1">Login Password</label>
+            <input type="password" name="password" required minlength="8" placeholder="Min 8 characters"
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div class="flex space-x-2 pt-2">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition">Create Dealer</button>
+            <button type="button" onclick="this.closest('dialog').close()" class="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded transition">Cancel</button>
+        </div>
+    </form>
+</dialog>
+
+{% endblock %}

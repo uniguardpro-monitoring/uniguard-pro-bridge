@@ -1,0 +1,60 @@
+<div class="space-y-2">
+    {% if events %}
+    <div class="text-xs text-gray-500 mb-2">{{ total }} event{{ 's' if total != 1 else '' }} total</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-gray-400 text-xs uppercase border-b border-gray-700">
+                    <th class="text-left py-2 px-2">Time</th>
+                    <th class="text-left py-2 px-2">Code</th>
+                    <th class="text-left py-2 px-2">Type</th>
+                    <th class="text-left py-2 px-2">Zone</th>
+                    <th class="text-left py-2 px-2">Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in events %}
+                <tr class="border-b border-gray-700/50 severity-{{ get_severity(event.event_code) }}">
+                    <td class="py-2 px-2 whitespace-nowrap" data-utc="{{ event.received_at[:19] }}">{{ event.received_at[:19] | replace('T', ' ') }}</td>
+                    <td class="py-2 px-2"><span class="badge-{{ get_severity(event.event_code) }}">{{ event.event_code }}</span></td>
+                    <td class="py-2 px-2">{{ event.event_type or event.event_desc or '' }}</td>
+                    <td class="py-2 px-2">
+                        {% if event.partition %}Partition {{ event.partition }}{% elif event.zone %}{{ event.zone }}{% if zone_names.get((account_id, event.zone or '')) %} <span class="text-gray-400">({{ zone_names[(account_id, event.zone or '')] }})</span>{% endif %}{% else %}-{% endif %}
+                    </td>
+                    <td class="py-2 px-2 text-gray-400">{{ event.message or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > limit %}
+    <div class="flex items-center justify-between pt-3 border-t border-gray-700">
+        <div class="text-xs text-gray-500">
+            Showing {{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}
+        </div>
+        <div class="flex space-x-2">
+            {% if offset > 0 %}
+            <button hx-get="{{ base_url }}/accounts/{{ account_id }}/modal/events?offset={{ [offset - limit, 0] | max }}"
+                    hx-target="#modal-content" hx-swap="innerHTML"
+                    class="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded transition">
+                Previous
+            </button>
+            {% endif %}
+            {% if offset + limit < total %}
+            <button hx-get="{{ base_url }}/accounts/{{ account_id }}/modal/events?offset={{ offset + limit }}"
+                    hx-target="#modal-content" hx-swap="innerHTML"
+                    class="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded transition">
+                Next
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="text-center text-gray-500 py-8">No events recorded for this account.</div>
+    {% endif %}
+</div>
+<script>if(window.arcTZ) arcTZ.applyAll();</script>

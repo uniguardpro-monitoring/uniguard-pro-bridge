@@ -1,0 +1,44 @@
+<!-- HTMX partial: webhook delivery log -->
+{% if deliveries %}
+<div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-gray-500 text-xs border-b border-gray-700">
+                <th class="px-4 py-2">Time</th>
+                <th class="px-4 py-2">Event ID</th>
+                <th class="px-4 py-2">Attempt</th>
+                <th class="px-4 py-2">Status</th>
+                <th class="px-4 py-2">Duration</th>
+                <th class="px-4 py-2">Error</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in deliveries %}
+            <tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                <td class="px-4 py-2 text-gray-400 whitespace-nowrap">
+                    <span data-utc="{{ d.delivered_at }}">{{ d.delivered_at }}</span>
+                </td>
+                <td class="px-4 py-2 text-gray-300 font-mono">{{ d.event_id }}</td>
+                <td class="px-4 py-2 text-gray-400">{{ d.attempt }}/3</td>
+                <td class="px-4 py-2">
+                    {% if d.status_code and 200 <= d.status_code < 300 %}
+                    <span class="text-green-400 font-mono">{{ d.status_code }}</span>
+                    {% elif d.status_code %}
+                    <span class="text-red-400 font-mono">{{ d.status_code }}</span>
+                    {% else %}
+                    <span class="text-yellow-400">Error</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-2 text-gray-400">{{ d.duration_ms }}ms</td>
+                <td class="px-4 py-2 text-red-400 text-xs truncate max-w-xs" title="{{ d.error or '' }}">
+                    {{ d.error or '-' }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<script>if(window.arcTZ) arcTZ.applyAll();</script>
+{% else %}
+<div class="text-gray-500 text-sm text-center py-4">No delivery attempts yet</div>
+{% endif %}

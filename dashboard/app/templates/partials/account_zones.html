@@ -1,0 +1,78 @@
+{% if success %}
+<div class="bg-green-900/50 border border-green-700 text-green-300 px-4 py-2 rounded mb-4 text-sm">
+    {{ success }}
+</div>
+{% endif %}
+
+<div id="zone-list">
+    {% if zones %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-gray-400 text-xs uppercase border-b border-gray-700">
+                    <th class="text-left py-2 px-2 w-24">Zone #</th>
+                    <th class="text-left py-2 px-2">Sensor Name</th>
+                    <th class="text-right py-2 px-2 w-20">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for zone in zones %}
+                <tr class="border-b border-gray-700/50" x-data="{ editing: false }">
+                    <td class="py-2 px-2 font-mono text-blue-400">{{ zone.zone_number }}</td>
+                    <td class="py-2 px-2">
+                        <span x-show="!editing">{{ zone.zone_name }}</span>
+                        <form x-show="editing" x-cloak class="flex items-center space-x-2"
+                              hx-post="{{ base_url }}/accounts/{{ account_id }}/zones"
+                              hx-target="#modal-content" hx-swap="innerHTML">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="zone_number" value="{{ zone.zone_number }}">
+                            <input type="text" name="zone_name" value="{{ zone.zone_name }}" required
+                                class="bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 text-sm flex-1 focus:outline-none focus:border-blue-500">
+                            <button type="submit" class="text-green-400 hover:text-green-300 text-xs">Save</button>
+                            <button type="button" @click="editing = false" class="text-gray-400 hover:text-white text-xs">Cancel</button>
+                        </form>
+                    </td>
+                    <td class="py-2 px-2 text-right">
+                        <div x-show="!editing" class="flex items-center justify-end space-x-2">
+                            <button @click="editing = true" class="text-gray-400 hover:text-white text-xs">Edit</button>
+                            <button hx-post="{{ base_url }}/accounts/{{ account_id }}/zones/{{ zone.zone_number }}/delete"
+                                    hx-target="#modal-content" hx-swap="innerHTML"
+                                    hx-confirm="Delete zone {{ zone.zone_number }}?"
+                                    hx-vals='{"csrf_token": "{{ csrf_token }}"}'
+                                    class="text-red-400 hover:text-red-300 text-xs">
+                                Delete
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center text-gray-500 py-4 text-sm">No zones configured yet.</div>
+    {% endif %}
+
+    <!-- Add zone form -->
+    <form hx-post="{{ base_url }}/accounts/{{ account_id }}/zones"
+          hx-target="#modal-content" hx-swap="innerHTML"
+          class="mt-4 border-t border-gray-700 pt-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="text-xs text-gray-400 font-semibold mb-2 uppercase tracking-wide">Add Zone</div>
+        <div class="flex items-end space-x-3">
+            <div class="w-24">
+                <label class="block text-gray-400 text-xs mb-1">Zone #</label>
+                <input type="text" name="zone_number" required placeholder="01"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-2 text-sm font-mono focus:outline-none focus:border-blue-500">
+            </div>
+            <div class="flex-1">
+                <label class="block text-gray-400 text-xs mb-1">Sensor Name</label>
+                <input type="text" name="zone_name" required placeholder="e.g., Front Door"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition whitespace-nowrap">
+                Add Zone
+            </button>
+        </div>
+    </form>
+</div>

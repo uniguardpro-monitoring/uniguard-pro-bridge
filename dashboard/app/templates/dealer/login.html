@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dealer Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center">
+    <div class="bg-gray-800 rounded-lg border border-gray-700 p-8 max-w-md w-full mx-4">
+        <div class="text-center mb-6">
+            <img src="/static/logo-white.png" alt="UniguardPro" class="h-10 mx-auto mb-3">
+            <h1 class="text-lg font-semibold text-gray-400">Dealer Portal</h1>
+        </div>
+
+        {% if error %}
+        <div class="bg-red-900/50 border border-red-500 rounded px-4 py-2 mb-4 text-red-200 text-sm">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/login" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div>
+                <label class="block text-gray-300 text-sm font-semibold mb-1">Username</label>
+                <input type="text" name="username" required autofocus autocomplete="username"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-gray-300 text-sm font-semibold mb-1">Password</label>
+                <input type="password" name="password" required autocomplete="current-password"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-semibold transition">
+                Sign In
+            </button>
+        </form>
+
+        <p class="text-center text-gray-500 text-xs mt-6">UniguardPro Dealer Portal</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,215 @@
+{% extends "dealer/base.html" %}
+{% block title %}Webhooks - {{ dealer.name }}{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-white">Webhook Configuration</h1>
+    <button onclick="document.getElementById('addWebhookModal').showModal()"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition flex items-center space-x-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        <span>Add Webhook</span>
+    </button>
+</div>
+
+<!-- Info box -->
+<div class="bg-gray-800 rounded-lg border border-blue-700/50 p-4 mb-6">
+    <h2 class="text-sm font-semibold text-blue-400 mb-2 flex items-center space-x-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span>How Webhooks Work</span>
+    </h2>
+    <p class="text-gray-400 text-sm">
+        Alarm events received for your accounts are forwarded as signed HTTPS POST requests to your configured endpoints.
+        Each payload includes an <code class="text-blue-300">X-Webhook-Signature</code> header (HMAC-SHA256) for verification.
+        Failed deliveries are retried up to 3 times with exponential backoff.
+    </p>
+</div>
+
+{% if success %}
+<div class="bg-green-900/50 border border-green-700 text-green-300 px-4 py-3 rounded mb-4 text-sm">
+    {{ success }}
+</div>
+{% endif %}
+
+{% if error %}
+<div class="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded mb-4 text-sm">
+    {{ error }}
+</div>
+{% endif %}
+
+<!-- New secret display -->
+{% if new_secret %}
+<div class="bg-yellow-900/50 border border-yellow-700 text-yellow-200 px-4 py-3 rounded mb-4">
+    <div class="flex items-center justify-between">
+        <div>
+            <span class="text-sm font-semibold">Webhook Secret</span>
+            <span class="text-xs text-yellow-400 ml-2">(copy now — this won't be shown again)</span>
+        </div>
+        <button onclick="navigator.clipboard.writeText('{{ new_secret }}'); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000)"
+            class="bg-yellow-700 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs transition">Copy</button>
+    </div>
+    <code class="block mt-2 bg-gray-900 text-yellow-300 px-3 py-2 rounded font-mono text-sm break-all select-all">{{ new_secret }}</code>
+</div>
+{% endif %}
+
+<!-- Webhooks list -->
+{% if webhooks %}
+<div class="space-y-4">
+    {% for wh in webhooks %}
+    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden" x-data="{ editing: false, expanded: false }">
+        <!-- Header row -->
+        <div class="p-4">
+            <div class="flex items-start justify-between">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center space-x-3 mb-1">
+                        {% if wh.enabled %}
+                        <span class="w-2 h-2 bg-green-400 rounded-full flex-shrink-0" title="Enabled"></span>
+                        {% else %}
+                        <span class="w-2 h-2 bg-gray-500 rounded-full flex-shrink-0" title="Disabled"></span>
+                        {% endif %}
+                        <span class="font-mono text-sm text-blue-400 truncate" title="{{ wh.url }}">{{ wh.url }}</span>
+                    </div>
+                    {% if wh.description %}
+                    <div class="text-gray-400 text-sm ml-5">{{ wh.description }}</div>
+                    {% endif %}
+                    <div class="flex items-center space-x-4 mt-2 ml-5 text-xs text-gray-500">
+                        <span>Filter: <span class="text-gray-300">{{ wh.event_filter if wh.event_filter != '*' else 'All events' }}</span></span>
+                        <span>Secret: <code class="text-gray-400">{{ wh.masked_secret }}</code></span>
+                        <span>Delivered: <span class="text-green-400">{{ wh.stats.delivered }}</span></span>
+                        <span>Failed: <span class="text-red-400">{{ wh.stats.failed }}</span></span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2 flex-shrink-0 ml-4">
+                    <form method="POST" action="/webhooks/{{ wh.id }}/test" class="inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 border border-blue-700 rounded transition" title="Send test">Test</button>
+                    </form>
+                    <form method="POST" action="/webhooks/{{ wh.id }}/toggle" class="inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="text-xs px-2 py-1 border rounded transition
+                            {% if wh.enabled %}text-yellow-400 hover:text-yellow-300 border-yellow-700{% else %}text-green-400 hover:text-green-300 border-green-700{% endif %}"
+                            title="{{ 'Disable' if wh.enabled else 'Enable' }}">
+                            {{ 'Disable' if wh.enabled else 'Enable' }}
+                        </button>
+                    </form>
+                    <button @click="editing = !editing" class="text-gray-400 hover:text-white text-xs px-2 py-1 border border-gray-600 rounded transition">Edit</button>
+                    <button @click="expanded = !expanded" class="text-gray-400 hover:text-white text-xs px-2 py-1 border border-gray-600 rounded transition"
+                        :title="expanded ? 'Hide log' : 'Show log'"
+                        hx-get="/webhooks/{{ wh.id }}/deliveries"
+                        hx-target="#deliveries-{{ wh.id }}"
+                        hx-trigger="click once">
+                        <span x-text="expanded ? 'Hide Log' : 'Delivery Log'">Delivery Log</span>
+                    </button>
+                    <form method="POST" action="/webhooks/{{ wh.id }}/delete" class="inline"
+                        onsubmit="return confirm('Delete this webhook?')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 border border-red-700 rounded transition">Delete</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit form -->
+        <div x-show="editing" x-cloak class="border-t border-gray-700 p-4 bg-gray-800/50">
+            <form method="POST" action="/webhooks/{{ wh.id }}/edit" class="space-y-3">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-gray-400 text-xs">Endpoint URL</label>
+                        <input type="url" name="url" value="{{ wh.url }}" required
+                            class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-1.5 text-sm"
+                            placeholder="https://example.com/webhook">
+                    </div>
+                    <div>
+                        <label class="text-gray-400 text-xs">Description</label>
+                        <input type="text" name="description" value="{{ wh.description or '' }}"
+                            class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-1.5 text-sm"
+                            placeholder="Optional label">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-gray-400 text-xs">Event Filter</label>
+                    <input type="text" name="event_filter" value="{{ wh.event_filter }}"
+                        class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-1.5 text-sm"
+                        placeholder="* for all, or comma-separated codes: BA,FA,PA">
+                    <p class="text-gray-500 text-xs mt-1">Use <code>*</code> for all events, or comma-separated SIA codes (e.g. <code>BA,FA,PA,MA,HA</code> for critical alarms only)</p>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm transition">Save Changes</button>
+                    <button type="button" @click="editing = false" class="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1.5 rounded text-sm transition">Cancel</button>
+                    <form method="POST" action="/webhooks/{{ wh.id }}/regenerate-secret" class="inline"
+                        onsubmit="return confirm('Regenerate secret? The current secret will stop working.')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="text-yellow-400 hover:text-yellow-300 text-xs px-2 py-1 border border-yellow-700 rounded transition">Regenerate Secret</button>
+                    </form>
+                </div>
+            </form>
+        </div>
+
+        <!-- Delivery log -->
+        <div x-show="expanded" x-cloak class="border-t border-gray-700">
+            <div id="deliveries-{{ wh.id }}">
+                <div class="text-gray-500 text-sm text-center py-4">Loading delivery log...</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+    <svg class="w-12 h-12 text-gray-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+    </svg>
+    <p class="text-gray-400 mb-2">No webhooks configured yet</p>
+    <p class="text-gray-500 text-sm">Add a webhook to start forwarding alarm events to your application.</p>
+</div>
+{% endif %}
+
+<!-- Add Webhook Modal -->
+<dialog id="addWebhookModal" class="bg-transparent">
+    <div class="bg-gray-800 rounded-lg border border-gray-700 w-full max-w-lg p-6 mx-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold text-white">Add Webhook</h2>
+            <button onclick="document.getElementById('addWebhookModal').close()"
+                class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+        </div>
+        <form method="POST" action="/webhooks" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div>
+                <label class="text-gray-400 text-xs block mb-1">Endpoint URL <span class="text-red-400">*</span></label>
+                <input type="url" name="url" required
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                    placeholder="https://your-app.com/api/webhooks/alarms">
+                <p class="text-gray-500 text-xs mt-1">Must be HTTPS. This is where alarm events will be POSTed.</p>
+            </div>
+            <div>
+                <label class="text-gray-400 text-xs block mb-1">Description</label>
+                <input type="text" name="description"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                    placeholder="e.g. Production alarm handler">
+            </div>
+            <div>
+                <label class="text-gray-400 text-xs block mb-1">Event Filter</label>
+                <input type="text" name="event_filter" value="*"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                    placeholder="* for all, or BA,FA,PA">
+                <p class="text-gray-500 text-xs mt-1">
+                    <code>*</code> = all events &middot;
+                    <code>BA,FA,PA,MA,HA</code> = critical alarms only &middot;
+                    <code>OP,CL</code> = arm/disarm only
+                </p>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button type="button" onclick="document.getElementById('addWebhookModal').close()"
+                    class="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded text-sm transition">Cancel</button>
+                <button type="submit"
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition">Create Webhook</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+{% endblock %}

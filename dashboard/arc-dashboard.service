@@ -1,0 +1,30 @@
+[Unit]
+Description=ARC Dashboard (FastAPI)
+After=network.target sia-receiver.service
+
+[Service]
+Type=simple
+User=claude
+Group=www-data
+WorkingDirectory=/opt/arc-dashboard
+EnvironmentFile=/opt/arc-dashboard/.env
+RuntimeDirectory=arc-dashboard
+ExecStart=/opt/alarm-receiver/venv/bin/uvicorn app.main:app --uds /run/arc-dashboard/dashboard.sock --workers 1
+ExecStartPost=/bin/bash -c 'sleep 1 && chmod 660 /run/arc-dashboard/dashboard.sock'
+Restart=always
+RestartSec=5
+UMask=0007
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=arc-dashboard
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/alarm-receiver/data /run/arc-dashboard
+
+[Install]
+WantedBy=multi-user.target

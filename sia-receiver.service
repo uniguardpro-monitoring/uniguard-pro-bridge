@@ -1,0 +1,26 @@
+[Unit]
+Description=SIA DC-09 Alarm Receiver
+After=network.target
+
+[Service]
+Type=simple
+User=claude
+Group=claude
+WorkingDirectory=/opt/alarm-receiver
+EnvironmentFile=/opt/alarm-receiver/.env
+ExecStart=/opt/alarm-receiver/venv/bin/python3 /opt/alarm-receiver/receiver.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sia-receiver
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/alarm-receiver/data /var/log/alarm-receiver
+
+[Install]
+WantedBy=multi-user.target

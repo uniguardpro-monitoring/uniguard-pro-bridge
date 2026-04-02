@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ARC Dashboard{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    {% block head_scripts %}{% endblock %}
+    <style>
+        [x-cloak] { display: none !important; }
+        .severity-critical { background: #fee2e2; border-left: 4px solid #ef4444; color: #7f1d1d; }
+        .severity-warning { background: #fefce8; border-left: 4px solid #facc15; color: #713f12; }
+        .severity-info { background: #eff6ff; border-left: 4px solid #93c5fd; color: #1e3a5f; }
+        .severity-muted { background: #f9fafb; border-left: 4px solid #d1d5db; color: #4b5563; }
+        .badge-critical { background: #ef4444; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 0.125rem 0.5rem; border-radius: 0.25rem; }
+        .badge-warning { background: #facc15; color: #713f12; font-size: 0.75rem; font-weight: 700; padding: 0.125rem 0.5rem; border-radius: 0.25rem; }
+        .badge-info { background: #60a5fa; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 0.125rem 0.5rem; border-radius: 0.25rem; }
+        .badge-muted { background: #d1d5db; color: #374151; font-size: 0.75rem; font-weight: 700; padding: 0.125rem 0.5rem; border-radius: 0.25rem; }
+        .pulse-dot { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-gray-800 border-b border-gray-700 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-6">
+                <a href="{{ P }}/" class="flex items-center">
+                    <img src="{{ P }}/static/logo-white.png" alt="UniguardPro" class="h-8">
+                </a>
+                {% if user %}
+                <div class="hidden md:flex items-center space-x-4">
+                    <a href="{{ P }}/" class="text-gray-300 hover:text-white px-3 py-1 rounded {% if request.url.path == P + '/' %}bg-gray-700 text-white{% endif %}">Dashboard</a>
+                    <a href="{{ P }}/events" class="text-gray-300 hover:text-white px-3 py-1 rounded {% if request.url.path == P + '/events' %}bg-gray-700 text-white{% endif %}">Events</a>
+                    <a href="{{ P }}/accounts" class="text-gray-300 hover:text-white px-3 py-1 rounded {% if request.url.path == P + '/accounts' %}bg-gray-700 text-white{% endif %}">Accounts</a>
+                    {% if user.role == 'admin' %}
+                    <a href="{{ P }}/dealers" class="text-gray-300 hover:text-white px-3 py-1 rounded {% if request.url.path == P + '/dealers' %}bg-gray-700 text-white{% endif %}">Dealers</a>
+                    <a href="{{ P }}/webhooks" class="text-gray-300 hover:text-white px-3 py-1 rounded {% if request.url.path == P + '/webhooks' %}bg-gray-700 text-white{% endif %}">Webhooks</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% if user %}
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2">
+                    <span id="nav-receiver-dot" class="pulse-dot w-2 h-2 bg-green-400 rounded-full inline-block"></span>
+                    <span id="nav-receiver-text" class="text-sm text-gray-400">Receiver Online</span>
+                </div>
+                <div class="hidden md:flex items-center space-x-3">
+                    <a href="{{ P }}/settings" class="text-gray-400 hover:text-white" title="Settings">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                    </a>
+                    {% if user.role == 'admin' %}
+                    <a href="{{ P }}/users" class="text-gray-400 hover:text-white" title="User Management">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                        </svg>
+                    </a>
+                    {% endif %}
+                </div>
+                <span class="text-sm text-gray-400">{{ user.username }}</span>
+                <a href="{{ P }}/logout" class="text-sm text-gray-400 hover:text-white">Logout</a>
+            </div>
+            {% endif %}
+        </div>
+    </nav>
+
+    <!-- Mobile nav -->
+    {% if user %}
+    <div class="md:hidden bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
+        <div class="flex space-x-4">
+            <a href="{{ P }}/" class="text-gray-300 hover:text-white text-sm px-2 py-1 {% if request.url.path == P + '/' %}bg-gray-700 text-white rounded{% endif %}">Dashboard</a>
+            <a href="{{ P }}/events" class="text-gray-300 hover:text-white text-sm px-2 py-1 {% if request.url.path == P + '/events' %}bg-gray-700 text-white rounded{% endif %}">Events</a>
+            <a href="{{ P }}/accounts" class="text-gray-300 hover:text-white text-sm px-2 py-1 {% if request.url.path == P + '/accounts' %}bg-gray-700 text-white rounded{% endif %}">Accounts</a>
+            {% if user.role == 'admin' %}
+            <a href="{{ P }}/dealers" class="text-gray-300 hover:text-white text-sm px-2 py-1 {% if request.url.path == P + '/dealers' %}bg-gray-700 text-white rounded{% endif %}">Dealers</a>
+            <a href="{{ P }}/webhooks" class="text-gray-300 hover:text-white text-sm px-2 py-1 {% if request.url.path == P + '/webhooks' %}bg-gray-700 text-white rounded{% endif %}">Webhooks</a>
+            {% endif %}
+        </div>
+        <div class="flex space-x-3">
+            <a href="{{ P }}/settings" class="text-gray-400 hover:text-white text-sm px-2 py-1">Settings</a>
+            {% if user.role == 'admin' %}
+            <a href="{{ P }}/users" class="text-gray-400 hover:text-white text-sm px-2 py-1">Users</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Content -->
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+    <!-- Account Modal -->
+    <div id="account-modal-container"
+         x-data="{ open: false, accountId: '', tab: 'details', baseUrl: '{{ P }}',
+                    loadTab(t) { this.tab = t; htmx.ajax('GET', this.baseUrl + '/accounts/' + this.accountId + '/modal/' + t, '#modal-content'); } }"
+         @open-account-modal.window="accountId = $event.detail.id; tab = 'details'; open = true; $nextTick(() => loadTab('details'))"
+         @keydown.escape.window="if(open) open = false">
+        <template x-if="open">
+            <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+                 @click.self="open = false">
+                <div class="bg-gray-800 rounded-lg border border-gray-700 w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col mx-4">
+                    <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center shrink-0">
+                        <h2 class="text-lg font-bold text-white">Account: <span x-text="accountId" class="font-mono text-blue-400"></span></h2>
+                        <button @click="open = false" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+                    </div>
+                    <div class="flex border-b border-gray-700 shrink-0">
+                        <button @click="loadTab('details')"
+                                :class="tab==='details' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'"
+                                class="px-4 py-2 text-sm font-medium transition">Details</button>
+                        <button @click="loadTab('events')"
+                                :class="tab==='events' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'"
+                                class="px-4 py-2 text-sm font-medium transition">Events</button>
+                        <button @click="loadTab('zones')"
+                                :class="tab==='zones' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'"
+                                class="px-4 py-2 text-sm font-medium transition">Zones</button>
+                    </div>
+                    <div id="modal-content" class="overflow-y-auto flex-1 p-6">
+                        <div class="text-gray-500 text-center py-8">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <script>
+    // Convert all data-utc timestamps to user's local timezone
+    (function() {
+        window.arcTZ = {
+            convert: function(utcStr) {
+                if (!utcStr) return '';
+                var s = utcStr.replace(' ', 'T');
+                if (!/[Z+\-]/.test(s.substring(10))) s += 'Z';
+                var d = new Date(s);
+                if (isNaN(d.getTime())) return utcStr;
+                var pad = function(n) { return n < 10 ? '0' + n : n; };
+                return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+                    ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+            },
+            tzLabel: function() {
+                try { return Intl.DateTimeFormat().resolvedOptions().timeZone; }
+                catch(e) { return 'Local'; }
+            },
+            applyAll: function() {
+                document.querySelectorAll('[data-utc]').forEach(function(el) {
+                    el.textContent = arcTZ.convert(el.getAttribute('data-utc'));
+                });
+                document.querySelectorAll('.tz-label').forEach(function(el) {
+                    el.textContent = arcTZ.tzLabel();
+                });
+            }
+        };
+        document.addEventListener('DOMContentLoaded', arcTZ.applyAll);
+    })();
+    </script>
+    <script src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+</body>
+</html>

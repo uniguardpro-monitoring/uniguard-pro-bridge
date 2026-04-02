@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}User Management - ARC{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-white">User Management</h1>
+    <button onclick="document.getElementById('addUserModal').showModal()"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition flex items-center space-x-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        <span>Add User</span>
+    </button>
+</div>
+
+{% if success %}
+<div class="bg-green-900/50 border border-green-500 text-green-200 px-4 py-3 rounded mb-4">
+    {{ success }}
+</div>
+{% endif %}
+
+{% if error %}
+<div class="bg-red-900/50 border border-red-500 text-red-200 px-4 py-3 rounded mb-4">
+    {{ error }}
+</div>
+{% endif %}
+
+<!-- Users Table -->
+<div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="text-left text-gray-400 text-sm border-b border-gray-700">
+                    <th class="px-4 py-3">ID</th>
+                    <th class="px-4 py-3">Username</th>
+                    <th class="px-4 py-3">Role</th>
+                    <th class="px-4 py-3">Created</th>
+                    <th class="px-4 py-3">Last Login</th>
+                    <th class="px-4 py-3 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                {% for u in users %}
+                <tr class="hover:bg-gray-700/50">
+                    <td class="px-4 py-3 text-sm text-gray-400">{{ u.id }}</td>
+                    <td class="px-4 py-3 text-sm text-white font-medium">
+                        {{ u.username }}
+                        {% if u.id == user.user_id %}
+                        <span class="text-xs text-gray-500 ml-1">(you)</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-sm">
+                        {% if u.role == 'admin' %}
+                        <span class="bg-purple-600 text-white text-xs font-bold px-2 py-0.5 rounded">Admin</span>
+                        {% else %}
+                        <span class="bg-gray-600 text-gray-200 text-xs font-bold px-2 py-0.5 rounded">Operator</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-400">
+                        {{ u.created_at[:19] | replace('T', ' ') if u.created_at else '-' }}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-400">
+                        {{ u.last_login[:19] | replace('T', ' ') if u.last_login else 'Never' }}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        {% if u.id != user.user_id %}
+                        <form method="POST" action="{{ P }}/users/{{ u.id }}/delete"
+                            onsubmit="return confirm('Delete user {{ u.username }}?')" class="inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                        </form>
+                        {% else %}
+                        <span class="text-gray-600 text-sm">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<dialog id="addUserModal" class="bg-gray-800 rounded-lg border border-gray-700 p-6 max-w-md w-full backdrop:bg-black/50">
+    <h2 class="text-xl font-bold text-white mb-4">Create User</h2>
+    <form method="POST" action="{{ P }}/users" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div>
+            <label class="block text-gray-300 text-sm font-semibold mb-1">Username</label>
+            <input type="text" name="username" required placeholder="e.g., operator1"
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+            <label class="block text-gray-300 text-sm font-semibold mb-1">Password</label>
+            <input type="password" name="password" required minlength="8" placeholder="Minimum 8 characters"
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+            <label class="block text-gray-300 text-sm font-semibold mb-1">Role</label>
+            <select name="role"
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500">
+                <option value="operator">Operator</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        <div class="flex space-x-2 pt-2">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition">Create User</button>
+            <button type="button" onclick="this.closest('dialog').close()" class="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded transition">Cancel</button>
+        </div>
+    </form>
+</dialog>
+
+{% endblock %}
