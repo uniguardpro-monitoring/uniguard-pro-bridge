@@ -218,13 +218,65 @@ app = FastAPI(
         "**Admin keys** have full access across all dealers."
     ),
     version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    docs_url=None,  # We serve custom docs below
+    redoc_url=None,
     openapi_url="/api/openapi.json",
     openapi_tags=TAGS_METADATA,
     lifespan=lifespan,
 )
 app.include_router(api_router)
+
+
+# Custom OpenAPI schema — only include /api/ routes, exclude dashboard HTML routes
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.openapi.utils import get_openapi
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+    # Filter to only /api/ paths
+    filtered_paths = {path: ops for path, ops in schema.get("paths", {}).items() if path.startswith("/api/")}
+    schema["paths"] = filtered_paths
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi
+
+
+@app.get("/api/docs", include_in_schema=False)
+async def custom_swagger_ui():
+    return get_swagger_ui_html(
+        openapi_url="/api/openapi.json",
+        title="ARC API - Swagger UI",
+        swagger_js_url="/static/swagger/swagger-ui-bundle.js",
+        swagger_css_url="/static/swagger/swagger-ui.css",
+        swagger_favicon_url="/static/logo-dark.png",
+        swagger_ui_parameters={
+            "docExpansion": "list",
+            "defaultModelsExpandDepth": 1,
+            "filter": True,
+            "tryItOutEnabled": True,
+        },
+    )
+
+
+@app.get("/api/redoc", include_in_schema=False)
+async def custom_redoc():
+    return get_redoc_html(
+        openapi_url="/api/openapi.json",
+        title="ARC API - ReDoc",
+        redoc_js_url="https://unpkg.com/redoc@next/bundles/redoc.standalone.js",
+        redoc_favicon_url="/static/logo-dark.png",
+    )
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -237,9 +289,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https://fastapi.tiangolo.com; "
             "connect-src 'self' wss: ws:; "
             "frame-ancestors 'none'"
         )
