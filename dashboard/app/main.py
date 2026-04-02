@@ -1383,7 +1383,7 @@ async def dealer_test_webhook(request: Request, webhook_id: int):
         "event_id": 0,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "dealer": {"id": dealer["id"], "prefix": dealer["prefix"], "name": dealer["name"]},
-        "account": {"id": "TEST", "name": "Test Account"},
+        "account": {"id": "TEST", "full_account": dealer["prefix"] + "TEST", "name": "Test Account", "address": "", "phone": "", "email": ""},
         "event": {
             "code": "TEST",
             "type": "Test",

@@ -272,10 +272,11 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
         try:
             with get_db() as conn:
                 drow = conn.execute(
-                    "SELECT prefix, name FROM dealers WHERE id = ?", (dealer_id,)
+                    "SELECT prefix, dnis, name FROM dealers WHERE id = ?", (dealer_id,)
                 ).fetchone()
                 if drow:
                     dealer_info["prefix"] = drow["prefix"]
+                    dealer_info["dnis"] = drow["dnis"]
                     dealer_info["name"] = drow["name"]
 
                 # Strip prefix to get account portion for name lookup
@@ -290,12 +291,17 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
                         acct_portion = acct_id[len(short):]
 
                 arow = conn.execute(
-                    "SELECT name FROM accounts WHERE account_id = ? AND dealer_id = ?",
+                    "SELECT name, address, phone, email FROM accounts "
+                    "WHERE account_id = ? AND dealer_id = ?",
                     (acct_portion, dealer_id),
                 ).fetchone()
                 if arow:
                     account_info["name"] = arow["name"]
+                    account_info["address"] = arow["address"] or ""
+                    account_info["phone"] = arow["phone"] or ""
+                    account_info["email"] = arow["email"] or ""
                 account_info["id"] = acct_portion
+                account_info["full_account"] = acct_id
 
                 # Zone name lookup
                 zone = event_data.get("zone") or ""
