@@ -55,6 +55,7 @@ def _dealer_scope(dealer_id):
 _VALID_TABLES = frozenset({
     "dealers", "users", "accounts", "events", "zones",
     "webhooks", "webhook_queue", "webhook_deliveries",
+    "api_keys",
 })
 
 
@@ -231,6 +232,29 @@ def migrate_db():
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_wd_webhook_id ON webhook_deliveries(webhook_id)")
             logger.info("Created webhook_deliveries table")
+
+        # Create api_keys table
+        if not _table_exists(conn, "api_keys"):
+            conn.execute("""
+                CREATE TABLE api_keys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key_hash TEXT NOT NULL UNIQUE,
+                    key_prefix TEXT NOT NULL,
+                    dealer_id INTEGER REFERENCES dealers(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL DEFAULT '',
+                    permissions TEXT NOT NULL DEFAULT '*',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    last_used_at TEXT
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)")
+            logger.info("Created api_keys table")
+
+        # Add archived_at to accounts for soft-delete support
+        if not _column_exists(conn, "accounts", "archived_at"):
+            conn.execute("ALTER TABLE accounts ADD COLUMN archived_at TEXT DEFAULT NULL")
+            logger.info("Added archived_at column to accounts table")
 
     # Seed default dealer from env vars if no dealers exist
     _seed_default_dealer()
@@ -467,12 +491,13 @@ def next_account_id(dealer_id):
     return format(max_val + 1, "03X")
 
 
-def get_accounts(dealer_id=None):
+def get_accounts(dealer_id=None, include_archived=False):
     """Get accounts, optionally scoped to a dealer."""
     scope, params = _dealer_scope(dealer_id)
+    archive_filter = "" if include_archived else "AND (archived_at IS NULL)"
     with get_db() as conn:
         rows = conn.execute(
-            f"SELECT * FROM accounts WHERE 1=1 {scope} ORDER BY name", params
+            f"SELECT * FROM accounts WHERE 1=1 {scope} {archive_filter} ORDER BY name", params
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -839,4 +864,106 @@ def cleanup_old_deliveries(days=7):
         conn.execute(
             "DELETE FROM webhook_deliveries WHERE delivered_at < datetime('now', ? || ' days')",
             (f"-{days}",),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Account archive (soft delete)
+# ---------------------------------------------------------------------------
+
+def archive_account(account_id, dealer_id=None):
+    """Soft-delete an account by setting archived_at."""
+    now = _now()
+    scope, scope_params = _dealer_scope(dealer_id)
+    with get_db_rw() as conn:
+        conn.execute(
+            f"UPDATE accounts SET archived_at=?, updated_at=? WHERE account_id=? {scope}",
+            (now, now, account_id) + scope_params,
+        )
+
+
+def restore_account(account_id, dealer_id=None):
+    """Unarchive an account by clearing archived_at."""
+    now = _now()
+    scope, scope_params = _dealer_scope(dealer_id)
+    with get_db_rw() as conn:
+        conn.execute(
+            f"UPDATE accounts SET archived_at=NULL, updated_at=? WHERE account_id=? {scope}",
+            (now, account_id) + scope_params,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Single event lookup
+# ---------------------------------------------------------------------------
+
+def get_event(event_id, dealer_id=None):
+    """Get a single event by ID, optionally scoped to a dealer."""
+    scope, scope_params = _dealer_scope(dealer_id)
+    with get_db() as conn:
+        row = conn.execute(
+            f"SELECT * FROM events WHERE id = ? {scope}",
+            (event_id,) + scope_params,
+        ).fetchone()
+        return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# API key CRUD
+# ---------------------------------------------------------------------------
+
+def create_api_key(key_hash, key_prefix, dealer_id=None, name=""):
+    """Create an API key record. Returns the new key ID."""
+    now = _now()
+    with get_db_rw() as conn:
+        conn.execute(
+            "INSERT INTO api_keys (key_hash, key_prefix, dealer_id, name, "
+            "permissions, enabled, created_at) VALUES (?, ?, ?, ?, '*', 1, ?)",
+            (key_hash, key_prefix, dealer_id, name, now),
+        )
+        return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def get_api_keys(dealer_id=None):
+    """List API keys. If dealer_id given, only that dealer's keys + admin keys are excluded."""
+    with get_db() as conn:
+        if dealer_id is not None:
+            rows = conn.execute(
+                "SELECT id, key_prefix, dealer_id, name, permissions, enabled, "
+                "created_at, last_used_at FROM api_keys WHERE dealer_id = ? ORDER BY created_at DESC",
+                (dealer_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, key_prefix, dealer_id, name, permissions, enabled, "
+                "created_at, last_used_at FROM api_keys ORDER BY created_at DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_api_key_by_hash(key_hash):
+    """Look up an API key by its SHA-256 hash. Returns full row or None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM api_keys WHERE key_hash = ?", (key_hash,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def delete_api_key(key_id, dealer_id=None):
+    """Delete/revoke an API key."""
+    scope, scope_params = _dealer_scope(dealer_id)
+    with get_db_rw() as conn:
+        conn.execute(
+            f"DELETE FROM api_keys WHERE id = ? {scope}",
+            (key_id,) + scope_params,
+        )
+
+
+def update_api_key_last_used(key_id):
+    """Stamp last_used_at on an API key."""
+    now = _now()
+    with get_db_rw() as conn:
+        conn.execute(
+            "UPDATE api_keys SET last_used_at = ? WHERE id = ?", (now, key_id),
         )

@@ -70,6 +70,7 @@ from .database import (
     DEFAULT_DNIS,
 )
 from .webhook_worker import WebhookWorker
+from .api import router as api_router, TAGS_METADATA
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arc-dashboard")
@@ -207,7 +208,23 @@ async def lifespan(app: FastAPI):
     await webhook_worker.stop()
 
 
-app = FastAPI(title="ARC Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(
+    title="ARC Alarm Receiving Center API",
+    description=(
+        "REST API for the Alarm Receiving Center (ARC). Manage dealers, accounts, "
+        "zones, events, webhooks, and API keys. Authenticate with an API key in the "
+        "`X-API-Key` header.\n\n"
+        "**Dealer-scoped keys** can only access data belonging to their dealer. "
+        "**Admin keys** have full access across all dealers."
+    ),
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    openapi_tags=TAGS_METADATA,
+    lifespan=lifespan,
+)
+app.include_router(api_router)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
