@@ -60,7 +60,71 @@ TAGS_METADATA = [
     {"name": "Events", "description": "Access alarm event history and live stream. Dealer-scoped."},
     {"name": "Zones", "description": "Label alarm zones within accounts. Dealer-scoped."},
     {"name": "Webhooks", "description": "Configure webhook endpoints for event forwarding. Dealer-scoped."},
+    {"name": "SIA Codes", "description": (
+        "Reference for SIA DC-09 alarm event codes. These 2-character codes appear in the "
+        "`event_code` field of alarm events and webhook payloads.\n\n"
+        "**Severity categories used in this system:**\n"
+        "- **Critical** (immediate response): `BA` `FA` `PA` `MA` `HA`\n"
+        "- **Warning** (medium priority): `TA` `TR` `AT` `YT`\n"
+        "- **Info** (normal activity): `OP` `CL` `RX`\n"
+        "- **Muted** (supervision): `RP`"
+    )},
 ]
+
+# ---------------------------------------------------------------------------
+# SIA DC-09 Code Reference
+# ---------------------------------------------------------------------------
+
+# Complete SIA event code table — loaded from pysiaalarm at import time,
+# with a hardcoded fallback for the most common codes.
+SIA_CODE_TABLE = {}
+try:
+    from pysiaalarm.utils import SIA_CODES as _raw_codes
+    for _code, _obj in _raw_codes.items():
+        SIA_CODE_TABLE[_code] = {
+            "code": _code,
+            "type": getattr(_obj, "type", ""),
+            "description": getattr(_obj, "description", ""),
+        }
+except Exception:
+    pass
+
+# Ensure we always have at least the common codes
+_COMMON_CODES = {
+    "BA": ("Burglary Alarm", "Burglary zone has been violated while armed"),
+    "BC": ("Burglary Cancel", "Alarm has been cancelled by authorized user"),
+    "BR": ("Burglary Restoral", "Alarm/trouble condition has been eliminated"),
+    "BT": ("Burglary Trouble", "Burglary zone disabled by fault"),
+    "BX": ("Burglary Test", "Burglary zone activated during testing"),
+    "CA": ("Automatic Closing", "System armed automatically"),
+    "CL": ("Closing Report", "System armed, normal"),
+    "FA": ("Fire Alarm", "Fire condition detected"),
+    "FC": ("Fire Cancel", "A Fire Alarm has been cancelled by an authorized person"),
+    "FR": ("Fire Restoral", "Alarm/trouble condition has been eliminated"),
+    "FT": ("Fire Trouble", "Zone disabled by fault"),
+    "FX": ("Fire Test", "Fire zone activated during test"),
+    "GA": ("Gas Alarm", "Gas alarm condition detected"),
+    "HA": ("Holdup Alarm", "Silent alarm, user under duress"),
+    "KA": ("Heat Alarm", "High temperature detected on premise"),
+    "MA": ("Medical Alarm", "Emergency assistance request"),
+    "OP": ("Opening Report", "Account was disarmed"),
+    "PA": ("Panic Alarm", "Emergency assistance request, manually activated"),
+    "QA": ("Emergency Alarm", "Emergency assistance request"),
+    "RP": ("Automatic Test", "Automatic communication test report"),
+    "RR": ("Power Up", "System lost power, is now restored"),
+    "RX": ("Manual Test", "Manual communication test report"),
+    "SA": ("Sprinkler Alarm", "Sprinkler flow condition exists"),
+    "TA": ("Tamper Alarm", "Alarm equipment enclosure opened"),
+    "TR": ("Tamper Restoral", "Alarm equipment enclosure has been closed"),
+    "AT": ("AC Trouble", "AC power has been failed"),
+    "AR": ("AC Restoral", "AC power has been restored"),
+    "WA": ("Water Alarm", "Water detected at protected premises"),
+    "YT": ("System Battery Trouble", "Low battery in control/communicator"),
+    "ZA": ("Freeze Alarm", "Low temperature detected at premises"),
+}
+for _c, (_t, _d) in _COMMON_CODES.items():
+    if _c not in SIA_CODE_TABLE:
+        SIA_CODE_TABLE[_c] = {"code": _c, "type": _t, "description": _d}
 
 router = APIRouter(prefix="/api/v1")
 
@@ -705,3 +769,93 @@ async def test_webhook_endpoint(webhook_id: int, auth: dict = Depends(get_api_us
     })
     enqueue_webhook_delivery(wh["id"], 0, test_payload)
     return {"data": {"message": f"Test webhook queued for delivery to {wh['url']}"}}
+
+
+# ============================================================================
+# SIA CODE REFERENCE
+# ============================================================================
+
+@router.get("/sia-codes", tags=["SIA Codes"], summary="List all SIA event codes",
+            response_model=DataResponse)
+async def list_sia_codes(
+    category: Optional[str] = Query(
+        None,
+        description="Filter by category: `alarm`, `trouble`, `restoral`, `bypass`, "
+                    "`open_close`, `test`, `supervisory`, `fire`, `burglary`, `medical`, "
+                    "`panic`, `tamper`, `access`",
+    ),
+):
+    """Complete reference of SIA DC-09 alarm event codes.
+
+    These 2-character codes appear in the `event_code` field of events and webhook payloads.
+    No authentication required.
+
+    **Common codes you'll encounter:**
+
+    | Code | Type | Meaning |
+    |------|------|---------|
+    | `BA` | Burglary Alarm | Intrusion detected while armed |
+    | `FA` | Fire Alarm | Fire condition detected |
+    | `PA` | Panic Alarm | Manual emergency request |
+    | `MA` | Medical Alarm | Medical emergency request |
+    | `HA` | Holdup Alarm | Silent duress alarm |
+    | `OP` | Opening Report | System disarmed |
+    | `CL` | Closing Report | System armed |
+    | `RP` | Automatic Test | Heartbeat / supervision signal |
+    | `TA` | Tamper Alarm | Equipment enclosure opened |
+    | `WA` | Water Alarm | Water/leak detected |
+    | `GA` | Gas Alarm | Gas detected |
+    | `ZA` | Freeze Alarm | Low temperature detected |
+
+    **Code naming patterns:**
+    - `xA` = Alarm (e.g. `BA`, `FA`, `PA`)
+    - `xR` = Restoral (e.g. `BR`, `FR`, `PR`)
+    - `xT` = Trouble (e.g. `BT`, `FT`, `PT`)
+    - `xB` = Bypass (e.g. `BB`, `FB`, `PB`)
+    - `xH` = Alarm Restore (e.g. `BH`, `FH`, `PH`)
+    - `xJ` = Trouble Restore (e.g. `BJ`, `FJ`, `PJ`)
+    - `xS` = Supervisory (e.g. `BS`, `FS`, `PS`)
+    - `xU` = Unbypass (e.g. `BU`, `FU`, `PU`)
+    - `xX` = Test (e.g. `BX`, `FX`, `TX`)
+    """
+    codes = list(SIA_CODE_TABLE.values())
+
+    if category:
+        cat = category.lower()
+        _CATEGORY_FILTERS = {
+            "alarm": lambda c: c["code"].endswith("A") and c["code"] != "CA",
+            "trouble": lambda c: c["code"].endswith("T") and c["code"] not in ("AT", "CT"),
+            "restoral": lambda c: c["code"].endswith("R") and c["code"] not in ("CR",),
+            "bypass": lambda c: c["code"].endswith("B"),
+            "open_close": lambda c: c["code"] in ("OP", "CL", "CA", "CP", "CQ", "OA", "OQ", "OR", "OS", "OK", "OJ", "CF", "CI", "CJ", "CK", "CT", "OT"),
+            "test": lambda c: c["code"].endswith("X") or c["code"] in ("RP", "RX", "TS", "TE", "TC"),
+            "supervisory": lambda c: c["code"].endswith("S") and len(c["code"]) == 2,
+            "fire": lambda c: c["code"].startswith("F"),
+            "burglary": lambda c: c["code"].startswith("B"),
+            "medical": lambda c: c["code"].startswith("M"),
+            "panic": lambda c: c["code"].startswith("P"),
+            "tamper": lambda c: c["code"].startswith("T"),
+            "access": lambda c: c["code"].startswith("D"),
+        }
+        filt = _CATEGORY_FILTERS.get(cat)
+        if filt:
+            codes = [c for c in codes if filt(c)]
+
+    codes.sort(key=lambda c: c["code"])
+    return {"data": codes, "meta": {"total": len(codes)}}
+
+
+@router.get("/sia-codes/{code}", tags=["SIA Codes"], summary="Look up a single SIA code",
+            response_model=DataResponse,
+            responses={404: {"model": ErrorResponse}})
+async def get_sia_code(code: str):
+    """Look up a specific SIA event code by its 2-character identifier.
+
+    No authentication required.
+    """
+    entry = SIA_CODE_TABLE.get(code.upper())
+    if not entry:
+        raise HTTPException(status_code=404, detail={
+            "error": {"code": "NOT_FOUND", "message": f"SIA code '{code.upper()}' not found"}
+        })
+    return {"data": entry}
