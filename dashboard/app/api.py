@@ -768,27 +768,21 @@ async def test_webhook_endpoint(webhook_id: int, auth: dict = Depends(get_api_us
         raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Webhook not found"}})
 
     dealer = get_dealer(wh["dealer_id"])
+    # Use the account_filter as the account_id (the short account portion)
+    acct_id = wh.get("account_filter") or "TEST"
+    acct = get_account(acct_id, dealer_id=wh["dealer_id"]) if acct_id != "TEST" else None
+    import calendar
+    unix_ts = int(calendar.timegm(datetime.now(timezone.utc).utctimetuple()))
     test_payload = json.dumps({
         "event_id": "evt_test_0",
-        "account_id": (dealer["prefix"] if dealer else "") + "TEST",
+        "account_id": acct_id,
         "event_code": "TEST",
-        "event_type": "Test",
-        "title": "Webhook connectivity test",
-        "name": "Test",
         "zone": "",
         "zone_name": "",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": unix_ts,
         "description": "Webhook connectivity test",
         "dealer_id": str(wh["dealer_id"]),
-        "dealer_name": dealer["name"] if dealer else "",
-        "account_name": "Test Account",
-        "account_address": "",
-        "account_phone": "",
-        "account_email": "",
-        "partition": "",
-        "message": "This is a test webhook from ARC",
-        "sia_type": "Test",
-        "sia_description": "Webhook connectivity test",
+        "account_name": acct["name"] if acct else "Test Account",
     })
     enqueue_webhook_delivery(wh["id"], 0, test_payload)
     return {"data": {"message": f"Test webhook queued for delivery to {wh['url']}"}}

@@ -209,8 +209,7 @@ class WebhookWorker:
                 payload.encode("utf-8"),
                 hashlib.sha256,
             ).hexdigest()
-            headers["X-Webhook-Signature"] = signature
-            headers["X-Webhook-Timestamp"] = timestamp
+            headers["x-arc-signature"] = signature
 
         start_time = time.monotonic()
         status_code = None

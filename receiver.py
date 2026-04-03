@@ -335,27 +335,31 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
         # Build the full account ID as transmitted (e.g. "002001")
         full_account = event_data.get("account", "")
 
+        # account_id = just the account portion (e.g. "004"), not the full prefix+account
+        acct_id_short = account_info.get("id", "")
+
+        # timestamp as Unix epoch integer
+        import calendar
+        ts_iso = event_data.get("received_at", "")
+        try:
+            dt = datetime.fromisoformat(ts_iso)
+            unix_ts = int(calendar.timegm(dt.utctimetuple()))
+        except Exception:
+            unix_ts = int(time.time())
+
+        # Zone as integer if numeric, else string
+        zone_val = int(zone) if zone and zone.isdigit() else zone
+
         payload = json.dumps({
             "event_id": f"evt_{event_id}",
-            "account_id": full_account,
+            "account_id": acct_id_short,
             "event_code": event_code,
-            "event_type": sia_type or event_code,
-            "title": description,
-            "name": sia_type or event_code,
-            "zone": zone,
+            "zone": zone_val,
             "zone_name": zone_nm,
-            "timestamp": event_data.get("received_at"),
+            "timestamp": unix_ts,
             "description": description,
             "dealer_id": str(dealer_id),
-            "dealer_name": dealer_info.get("name", ""),
             "account_name": account_info.get("name", ""),
-            "account_address": account_info.get("address", ""),
-            "account_phone": account_info.get("phone", ""),
-            "account_email": account_info.get("email", ""),
-            "partition": event_data.get("partition") or "",
-            "message": event_data.get("message") or "",
-            "sia_type": sia_type,
-            "sia_description": sia_desc,
         }, default=str)
 
         now = datetime.now(timezone.utc).isoformat()

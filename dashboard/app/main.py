@@ -882,20 +882,18 @@ async def admin_account_test_webhook(request: Request, account_id: str, wh_id: i
     did = acct.get("dealer_id") if acct else None
     wh = get_webhook(wh_id)
     if wh:
-        dealer = get_dealer(wh["dealer_id"]) if wh.get("dealer_id") else None
+        import calendar as _cal
+        unix_ts = int(_cal.timegm(datetime.now(timezone.utc).utctimetuple()))
         test_payload = _json.dumps({
             "event_id": "evt_test_0",
-            "account_id": (dealer["prefix"] if dealer else "") + short_id,
-            "event_code": "TEST", "event_type": "Test", "title": "Webhook connectivity test", "name": "Test",
-            "zone": "", "zone_name": "",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "account_id": short_id,
+            "event_code": "TEST",
+            "zone": "",
+            "zone_name": "",
+            "timestamp": unix_ts,
             "description": "Webhook connectivity test",
             "dealer_id": str(wh.get("dealer_id", "")),
-            "dealer_name": dealer["name"] if dealer else "",
             "account_name": acct.get("name", "") if acct else "",
-            "account_address": "", "account_phone": "", "account_email": "",
-            "partition": "", "message": "This is a test webhook from ARC",
-            "sia_type": "Test", "sia_description": "Webhook connectivity test",
         })
         enqueue_webhook_delivery(wh["id"], 0, test_payload)
     ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, success="Test webhook queued.")
@@ -1601,18 +1599,19 @@ async def dealer_account_test_webhook(request: Request, account_id: str, wh_id: 
         return HTMLResponse("CSRF error", status_code=403)
     wh = get_webhook(wh_id, dealer_id=dealer["id"])
     if wh:
+        acct = get_account(account_id, dealer_id=dealer["id"])
+        import calendar as _cal
+        unix_ts = int(_cal.timegm(datetime.now(timezone.utc).utctimetuple()))
         test_payload = _json.dumps({
             "event_id": "evt_test_0",
-            "account_id": dealer["prefix"] + account_id,
-            "event_code": "TEST", "event_type": "Test", "title": "Webhook connectivity test", "name": "Test",
-            "zone": "", "zone_name": "",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "account_id": account_id,
+            "event_code": "TEST",
+            "zone": "",
+            "zone_name": "",
+            "timestamp": unix_ts,
             "description": "Webhook connectivity test",
             "dealer_id": str(dealer["id"]),
-            "dealer_name": dealer["name"],
-            "account_name": "", "account_address": "", "account_phone": "", "account_email": "",
-            "partition": "", "message": "This is a test webhook from ARC",
-            "sia_type": "Test", "sia_description": "Webhook connectivity test",
+            "account_name": acct["name"] if acct else "",
         })
         enqueue_webhook_delivery(wh["id"], 0, test_payload)
     ctx, csrf = _account_webhooks_ctx(request, account_id, dealer["id"], "", success="Test webhook queued.")
@@ -1844,27 +1843,20 @@ async def dealer_test_webhook(request: Request, webhook_id: int):
     if not wh:
         return RedirectResponse("/webhooks", status_code=302)
 
+    acct_id = wh.get("account_filter") or "TEST"
+    acct = get_account(acct_id, dealer_id=dealer["id"]) if acct_id != "TEST" else None
+    import calendar as _cal
+    unix_ts = int(_cal.timegm(datetime.now(timezone.utc).utctimetuple()))
     test_payload = _json.dumps({
         "event_id": "evt_test_0",
-        "account_id": dealer["prefix"] + "TEST",
+        "account_id": acct_id,
         "event_code": "TEST",
-        "event_type": "Test",
-        "title": "Webhook connectivity test",
-        "name": "Test",
         "zone": "",
         "zone_name": "",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": unix_ts,
         "description": "Webhook connectivity test",
         "dealer_id": str(dealer["id"]),
-        "dealer_name": dealer["name"],
-        "account_name": "Test Account",
-        "account_address": "",
-        "account_phone": "",
-        "account_email": "",
-        "partition": "",
-        "message": "This is a test webhook from ARC",
-        "sia_type": "Test",
-        "sia_description": "Webhook connectivity test",
+        "account_name": acct["name"] if acct else "Test Account",
     })
 
     # Enqueue the test delivery
