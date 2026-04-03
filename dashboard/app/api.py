@@ -698,7 +698,8 @@ async def create_webhook_endpoint(body: WebhookCreate, auth: dict = Depends(get_
     """
     did = _require_dealer_id(auth, body.dealer_id)
 
-    # For bearer auth, use the provided secret/token; for hmac, auto-generate
+    # Use shared ARC_WEBHOOK_SECRET for hmac (default), or provided secret for bearer
+    from . import config as _cfg
     if body.auth_type == "bearer":
         if not body.secret:
             raise HTTPException(status_code=422, detail={
@@ -706,7 +707,7 @@ async def create_webhook_endpoint(body: WebhookCreate, auth: dict = Depends(get_
             })
         secret = body.secret
     else:
-        secret = body.secret or secrets.token_hex(32)
+        secret = body.secret or _cfg.WEBHOOK_SECRET or secrets.token_hex(32)
 
     wh_id = create_webhook(
         dealer_id=did, url=body.url, secret=secret,

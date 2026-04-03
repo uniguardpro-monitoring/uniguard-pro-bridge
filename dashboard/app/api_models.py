@@ -176,15 +176,15 @@ class WebhookCreate(BaseModel):
     description: str = Field("", max_length=200, description="Optional label")
     event_filter: str = Field("*", max_length=200,
                                description="'*' for all events, or comma-separated SIA codes (e.g. 'BA,FA,PA')")
-    auth_type: str = Field("hmac", description="Authentication type: 'hmac' (HMAC-SHA256 signature) or 'bearer' (Authorization: Bearer token)")
+    auth_type: str = Field("hmac", description="Authentication type: 'hmac' (HMAC-SHA256 with shared ARC_WEBHOOK_SECRET) or 'bearer' (Authorization: Bearer token)")
     account_filter: Optional[str] = Field(None, max_length=16,
                                            description="Scope to a specific account ID (e.g. '001'). Null = all accounts.")
     secret: Optional[str] = Field(None, max_length=500,
-                                   description="For bearer auth: your Bearer token. For hmac: auto-generated if omitted.")
+                                   description="For bearer: your token. For hmac: uses shared ARC_WEBHOOK_SECRET (omit this field).")
     dealer_id: Optional[int] = Field(None, description="Dealer ID (required for admin keys, ignored for dealer keys)")
 
     model_config = {"json_schema_extra": {"examples": [
-        {"url": "https://app.example.com/webhooks/alarms", "description": "Production handler", "event_filter": "*", "auth_type": "bearer", "secret": "your-bearer-token", "account_filter": "001"},
+        {"url": "https://us.uniguardpro.io/functions/v1/client-webhook", "description": "Smith Residence", "event_filter": "*", "account_filter": "001", "dealer_id": 2},
     ]}}
 
 

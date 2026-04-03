@@ -122,26 +122,12 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div>
             <label class="text-gray-400 text-xs block mb-1">Endpoint URL <span class="text-red-400">*</span></label>
-            <input type="url" name="url" required value="https://us.uniguardpro.io/functions/v1/client-webhook"
+            <input type="url" name="url" required value="https://olzhvzijbmaeqxbmemgt.supabase.co/functions/v1/arc-webhook-ingestion"
                 class="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-1.5 text-sm"
                 placeholder="https://...">
         </div>
-        <div class="grid grid-cols-2 gap-3">
-            <div>
-                <label class="text-gray-400 text-xs block mb-1">Auth Type</label>
-                <select name="auth_type"
-                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-1.5 text-sm">
-                    <option value="bearer" selected>Bearer Token</option>
-                    <option value="hmac">HMAC Signature</option>
-                </select>
-            </div>
-            <div>
-                <label class="text-gray-400 text-xs block mb-1">Bearer Token / Secret <span class="text-red-400">*</span></label>
-                <input type="text" name="secret" required
-                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-1.5 text-sm"
-                    placeholder="Client's bearer token">
-            </div>
-        </div>
+        <input type="hidden" name="auth_type" value="hmac">
+        <p class="text-gray-500 text-xs">Authentication: HMAC-SHA256 with shared <code class="text-gray-400">ARC_WEBHOOK_SECRET</code></p>
         <div class="grid grid-cols-2 gap-3">
             <div>
                 <label class="text-gray-400 text-xs block mb-1">Description</label>

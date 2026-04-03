@@ -793,14 +793,8 @@ async def admin_account_create_webhook(request: Request, account_id: str):
         ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, error="URL must start with https://")
         resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
         return _set_csrf_cookie(resp, csrf, config.DEBUG)
-    auth_type = _form_str(form, "auth_type") or "bearer"
-    secret = _form_str(form, "secret", max_length=500)
-    if auth_type == "bearer" and not secret:
-        ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, error="Bearer token is required")
-        resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
-        return _set_csrf_cookie(resp, csrf, config.DEBUG)
-    if not secret:
-        secret = secrets.token_hex(32)
+    auth_type = _form_str(form, "auth_type") or "hmac"
+    secret = config.WEBHOOK_SECRET or secrets.token_hex(32)
     try:
         create_webhook(
             dealer_id=did, url=url, secret=secret,
@@ -810,11 +804,7 @@ async def admin_account_create_webhook(request: Request, account_id: str):
         )
     except Exception as e:
         logger.error("Error creating account webhook: %s", e)
-    ctx, csrf = _account_webhooks_ctx(
-        request, short_id, did, P,
-        success="Webhook created." + (" Copy the secret below." if auth_type != "bearer" else ""),
-        new_secret=secret if auth_type != "bearer" else None,
-    )
+    ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, success="Webhook created.")
     resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
     return _set_csrf_cookie(resp, csrf, config.DEBUG)
 
@@ -1533,14 +1523,8 @@ async def dealer_account_create_webhook(request: Request, account_id: str):
         ctx, csrf = _account_webhooks_ctx(request, account_id, did, "", error="URL must start with https://")
         resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
         return _set_csrf_cookie(resp, csrf, config.DEBUG)
-    auth_type = _form_str(form, "auth_type") or "bearer"
-    secret = _form_str(form, "secret", max_length=500)
-    if auth_type == "bearer" and not secret:
-        ctx, csrf = _account_webhooks_ctx(request, account_id, did, "", error="Bearer token is required")
-        resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
-        return _set_csrf_cookie(resp, csrf, config.DEBUG)
-    if not secret:
-        secret = secrets.token_hex(32)
+    auth_type = _form_str(form, "auth_type") or "hmac"
+    secret = config.WEBHOOK_SECRET or secrets.token_hex(32)
     try:
         create_webhook(
             dealer_id=did, url=url, secret=secret,
@@ -1550,11 +1534,7 @@ async def dealer_account_create_webhook(request: Request, account_id: str):
         )
     except Exception as e:
         logger.error("Error creating dealer account webhook: %s", e)
-    ctx, csrf = _account_webhooks_ctx(
-        request, account_id, did, "",
-        success="Webhook created." + (" Copy the secret below." if auth_type != "bearer" else ""),
-        new_secret=secret if auth_type != "bearer" else None,
-    )
+    ctx, csrf = _account_webhooks_ctx(request, account_id, did, "", success="Webhook created.")
     resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
     return _set_csrf_cookie(resp, csrf, config.DEBUG)
 

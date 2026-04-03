@@ -10,3 +10,6 @@ DEBUG = os.environ.get("ARC_DEBUG", "false").lower() == "true"
 # Rate limiting
 LOGIN_MAX_ATTEMPTS = int(os.environ.get("ARC_LOGIN_MAX_ATTEMPTS", "5"))
 LOGIN_LOCKOUT_SECONDS = int(os.environ.get("ARC_LOGIN_LOCKOUT_SECONDS", "300"))
+
+# Shared webhook HMAC secret
+WEBHOOK_SECRET = os.environ.get("ARC_WEBHOOK_SECRET", "")
