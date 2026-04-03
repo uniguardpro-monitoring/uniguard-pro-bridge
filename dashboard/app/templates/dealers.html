@@ -32,7 +32,12 @@
                 <tr class="hover:bg-gray-700/50" x-data="{ editing: false }">
                     <!-- View mode -->
                     <td x-show="!editing" class="px-4 py-3 font-mono font-bold text-blue-400">{{ d.prefix }}</td>
-                    <td x-show="!editing" class="px-4 py-3 text-white font-medium">{{ d.name }}</td>
+                    <td x-show="!editing" class="px-4 py-3">
+                        <a href="{{ P }}/dealers/{{ d.id }}/accounts" class="text-white font-medium hover:text-blue-400 transition">
+                            {{ d.name }}
+                            <span class="text-gray-500 text-xs ml-1">({{ d.account_count or 0 }} accounts)</span>
+                        </a>
+                    </td>
                     <td x-show="!editing" class="px-4 py-3 text-sm text-gray-400 hidden md:table-cell">{{ d.phone or '-' }}</td>
                     <td x-show="!editing" class="px-4 py-3 text-sm text-gray-400">{{ d.email or '-' }}</td>
                     <td x-show="!editing" class="px-4 py-3">

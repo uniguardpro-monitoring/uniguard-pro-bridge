@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}{{ dealer.name }} - Accounts{% endblock %}
+{% block content %}
+
+<!-- Breadcrumb -->
+<div class="flex items-center space-x-2 text-sm text-gray-400 mb-4">
+    <a href="{{ P }}/dealers" class="hover:text-white transition">Dealers</a>
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    <span class="text-white">{{ dealer.name }}</span>
+</div>
+
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-white">{{ dealer.name }}</h1>
+        <div class="flex items-center space-x-4 mt-1 text-sm text-gray-400">
+            <span>Prefix: <span class="font-mono text-blue-400 font-bold">{{ dealer.prefix }}</span></span>
+            <span>DNIS: <span class="font-mono text-blue-400">{{ dealer.dnis }}</span></span>
+            {% if dealer.phone %}<span>{{ dealer.phone }}</span>{% endif %}
+            {% if dealer.email %}<span>{{ dealer.email }}</span>{% endif %}
+            {% if dealer.enabled %}
+            <span class="bg-green-500/20 text-green-400 text-xs font-semibold px-2 py-0.5 rounded">Active</span>
+            {% else %}
+            <span class="bg-red-500/20 text-red-400 text-xs font-semibold px-2 py-0.5 rounded">Disabled</span>
+            {% endif %}
+        </div>
+    </div>
+    <button onclick="document.getElementById('addAccountModal').showModal()"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition flex items-center space-x-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        <span>Add Account</span>
+    </button>
+</div>
+
+<!-- alarm.com Programming Info -->
+<div class="bg-gray-800 rounded-lg border border-blue-700/50 p-4 mb-6">
+    <h2 class="text-sm font-semibold text-blue-400 mb-3 flex items-center space-x-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span>alarm.com Programming Info</span>
+    </h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+            <span class="text-gray-500 text-xs block">Dealer Prefix</span>
+            <span class="font-mono text-white text-lg font-bold">{{ dealer.prefix }}</span>
+        </div>
+        <div>
+            <span class="text-gray-500 text-xs block">Linecard / DNIS</span>
+            <span class="font-mono text-white text-lg font-bold">{{ dealer.dnis }}</span>
+        </div>
+        <div>
+            <span class="text-gray-500 text-xs block">Receiver Address</span>
+            <span class="font-mono text-white text-sm">alarmreceiver.uniguardpro.io:12000</span>
+        </div>
+    </div>
+    <p class="text-gray-500 text-xs mt-3">Enter these values in alarm.com when programming a new panel. The Account ID below is assigned per customer.</p>
+</div>
+
+<!-- Accounts Grid -->
+{% if accounts %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for acct in accounts %}
+    <div class="bg-gray-800 rounded-lg border border-gray-700 p-4 {% if acct.archived_at %}opacity-50{% endif %}" x-data="{ editing: false }">
+        <div x-show="!editing">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center space-x-2">
+                    <span class="font-mono text-lg font-bold text-blue-400">{{ acct.account_id }}</span>
+                    {% if acct.archived_at %}
+                    <span class="bg-yellow-500/20 text-yellow-400 text-xs font-semibold px-2 py-0.5 rounded">Archived</span>
+                    {% endif %}
+                </div>
+                <div class="flex space-x-2">
+                    <button @click="$dispatch('open-account-modal', {id: '{{ acct.account_id }}'})" class="text-blue-400 hover:text-blue-300 text-sm">View</button>
+                    <button @click="editing = true" class="text-gray-400 hover:text-white text-sm">Edit</button>
+                    <form method="POST" action="{{ P }}/dealers/{{ dealer.id }}/accounts/{{ acct.account_id }}/delete"
+                        onsubmit="return confirm('Delete account {{ acct.account_id }} ({{ acct.name }})?')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                    </form>
+                </div>
+            </div>
+            <div class="text-white font-semibold">{{ acct.name }}</div>
+            <div class="text-gray-500 text-xs mt-1 font-mono">Full Account: {{ dealer.prefix }}{{ acct.account_id }} &middot; DNIS: {{ dealer.dnis }}</div>
+            {% if acct.address %}<div class="text-gray-400 text-sm mt-1">{{ acct.address }}</div>{% endif %}
+            {% if acct.phone %}<div class="text-gray-400 text-sm">{{ acct.phone }}</div>{% endif %}
+            {% if acct.email %}<div class="text-gray-400 text-sm">{{ acct.email }}</div>{% endif %}
+            {% if acct.notes %}<div class="text-gray-500 text-sm mt-2 italic">{{ acct.notes }}</div>{% endif %}
+            {% set zones = zones_by_account.get(acct.account_id, []) %}
+            {% if zones %}
+            <div class="mt-3 pt-3 border-t border-gray-700">
+                <span class="text-gray-500 text-xs font-semibold">Zones:</span>
+                <div class="flex flex-wrap gap-1 mt-1">
+                    {% for z in zones %}
+                    <span class="bg-gray-700 text-gray-300 text-xs px-2 py-0.5 rounded font-mono">{{ z.zone_number }}: {{ z.zone_name }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Edit form -->
+        <form x-show="editing" x-cloak method="POST" action="{{ P }}/dealers/{{ dealer.id }}/accounts/{{ acct.account_id }}/edit" class="space-y-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="flex items-center space-x-2 mb-2">
+                <span class="font-mono text-lg font-bold text-blue-400">{{ acct.account_id }}</span>
+                <span class="text-gray-500 text-xs font-mono">{{ dealer.prefix }}{{ acct.account_id }}</span>
+            </div>
+            <div>
+                <label class="text-gray-400 text-xs">Name</label>
+                <input type="text" name="name" value="{{ acct.name }}" required
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-1 text-sm">
+            </div>
+            <div>
+                <label class="text-gray-400 text-xs">Address</label>
+                <input type="text" name="address" value="{{ acct.address or '' }}"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-1 text-sm">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="text-gray-400 text-xs">Phone</label>
+                    <input type="tel" name="phone" value="{{ acct.phone or '' }}"
+                        class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-gray-400 text-xs">Email</label>
+                    <input type="email" name="email" value="{{ acct.email or '' }}"
+                        class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-1 text-sm">
+                </div>
+            </div>
+            <div>
+                <label class="text-gray-400 text-xs">Notes</label>
+                <textarea name="notes" rows="2"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-1 text-sm">{{ acct.notes or '' }}</textarea>
+            </div>
+            <div class="flex space-x-2">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">Save</button>
+                <button type="button" @click="editing = false" class="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-sm">Cancel</button>
+            </div>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+    <svg class="w-12 h-12 text-gray-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+    </svg>
+    <p class="text-gray-400 mb-2">No accounts yet for {{ dealer.name }}</p>
+    <p class="text-gray-500 text-sm">Add the first account to start receiving alarm signals.</p>
+</div>
+{% endif %}
+
+<!-- Add Account Modal -->
+<dialog id="addAccountModal" class="bg-transparent">
+    <div class="bg-gray-800 rounded-lg border border-gray-700 w-full max-w-lg p-6 mx-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold text-white">Add Account to {{ dealer.name }}</h2>
+            <button onclick="document.getElementById('addAccountModal').close()"
+                class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+        </div>
+        <form method="POST" action="{{ P }}/dealers/{{ dealer.id }}/accounts" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-gray-400 text-xs block mb-1">Account ID (hex)</label>
+                    <input type="text" name="account_id" value="{{ next_account_id }}" required
+                        pattern="[0-9A-Fa-f]{1,16}"
+                        class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm font-mono">
+                    <p class="text-gray-500 text-xs mt-1">Full: {{ dealer.prefix }}<span class="text-blue-400">{{ next_account_id }}</span></p>
+                </div>
+                <div>
+                    <label class="text-gray-400 text-xs block mb-1">Name <span class="text-red-400">*</span></label>
+                    <input type="text" name="name" required
+                        class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                        placeholder="e.g., Smith Residence">
+                </div>
+            </div>
+            <div>
+                <label class="text-gray-400 text-xs block mb-1">Address</label>
+                <input type="text" name="address"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                    placeholder="123 Main St, City">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-gray-400 text-xs block mb-1">Phone</label>
+                    <input type="tel" name="phone"
+                        class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                        placeholder="(555) 123-4567">
+                </div>
+                <div>
+                    <label class="text-gray-400 text-xs block mb-1">Email</label>
+                    <input type="email" name="email"
+                        class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                        placeholder="client@email.com">
+                </div>
+            </div>
+            <div>
+                <label class="text-gray-400 text-xs block mb-1">Notes</label>
+                <textarea name="notes" rows="2"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                    placeholder="Internal notes..."></textarea>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button type="button" onclick="document.getElementById('addAccountModal').close()"
+                    class="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded text-sm transition">Cancel</button>
+                <button type="submit"
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition">Create Account</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+{% endblock %}

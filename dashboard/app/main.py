@@ -829,6 +829,7 @@ async def admin_dealers_page(request: Request):
     for d in dealers:
         du = get_dealer_user(d["id"])
         d["login_username"] = du["username"] if du else None
+        d["account_count"] = len(get_accounts(dealer_id=d["id"]))
     resp = templates.TemplateResponse("dealers.html", {
         "request": request, "user": user, "dealers": dealers,
         "csrf_token": csrf, "next_prefix": next_dealer_prefix(), "dnis": DEFAULT_DNIS,
@@ -897,6 +898,91 @@ async def admin_delete_dealer(request: Request, dealer_id: int):
     delete_dealer(dealer_id)
     logger.info("Dealer ID %d deleted by '%s'", dealer_id, user["username"])
     return RedirectResponse(f"{P}/dealers", status_code=302)
+
+
+# --- Dealer > Accounts drilldown ---
+@app.get(f"{P}/dealers/{{dealer_id}}/accounts", response_class=HTMLResponse)
+async def admin_dealer_accounts_page(request: Request, dealer_id: int):
+    user = require_admin(request)
+    if not user:
+        return RedirectResponse(f"{P}/login", status_code=302)
+    dealer = get_dealer(dealer_id)
+    if not dealer:
+        return RedirectResponse(f"{P}/dealers", status_code=302)
+    csrf = _get_csrf_token(request)
+    accounts = get_accounts(dealer_id=dealer_id, include_archived=True)
+    zones_by_account = {}
+    for acct in accounts:
+        zones_by_account[acct["account_id"]] = get_zones(acct["account_id"], dealer_id=dealer_id)
+    resp = templates.TemplateResponse("dealer_accounts.html", {
+        "request": request, "user": user, "dealer": dealer,
+        "accounts": accounts, "zones_by_account": zones_by_account,
+        "csrf_token": csrf,
+        "next_account_id": next_account_id(dealer_id),
+    })
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post(f"{P}/dealers/{{dealer_id}}/accounts")
+async def admin_dealer_create_account(request: Request, dealer_id: int):
+    user = require_admin(request)
+    if not user:
+        return RedirectResponse(f"{P}/login", status_code=302)
+    dealer = get_dealer(dealer_id)
+    if not dealer:
+        return RedirectResponse(f"{P}/dealers", status_code=302)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
+    account_id = _form_str(form, "account_id").upper()
+    name = _form_str(form, "name")
+    if not ACCOUNT_ID_RE.match(account_id) or not name:
+        return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
+    try:
+        create_account(
+            account_id=account_id, name=name,
+            address=_form_str(form, "address"),
+            phone=_form_str(form, "phone"),
+            email=_form_str(form, "email"),
+            notes=_form_str(form, "notes"),
+            dealer_id=dealer_id,
+        )
+    except Exception as e:
+        logger.error("Error creating account under dealer %d: %s", dealer_id, e)
+    return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
+
+
+@app.post(f"{P}/dealers/{{dealer_id}}/accounts/{{account_id}}/edit")
+async def admin_dealer_edit_account(request: Request, dealer_id: int, account_id: str):
+    user = require_admin(request)
+    if not user:
+        return RedirectResponse(f"{P}/login", status_code=302)
+    if not ACCOUNT_ID_RE.match(account_id):
+        return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
+    update_account(
+        account_id=account_id, name=_form_str(form, "name"),
+        address=_form_str(form, "address"), phone=_form_str(form, "phone"),
+        email=_form_str(form, "email"), notes=_form_str(form, "notes"),
+        dealer_id=dealer_id,
+    )
+    return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
+
+
+@app.post(f"{P}/dealers/{{dealer_id}}/accounts/{{account_id}}/delete")
+async def admin_dealer_delete_account(request: Request, dealer_id: int, account_id: str):
+    user = require_admin(request)
+    if not user:
+        return RedirectResponse(f"{P}/login", status_code=302)
+    if not ACCOUNT_ID_RE.match(account_id):
+        return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
+    delete_account(account_id, dealer_id=dealer_id)
+    return RedirectResponse(f"{P}/dealers/{dealer_id}/accounts", status_code=302)
 
 
 # ============================================================================
