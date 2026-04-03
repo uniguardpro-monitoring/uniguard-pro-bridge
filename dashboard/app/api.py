@@ -697,10 +697,21 @@ async def create_webhook_endpoint(body: WebhookCreate, auth: dict = Depends(get_
     Admin keys must provide `dealer_id`. Dealer keys auto-assign.
     """
     did = _require_dealer_id(auth, body.dealer_id)
-    secret = secrets.token_hex(32)
+
+    # For bearer auth, use the provided secret/token; for hmac, auto-generate
+    if body.auth_type == "bearer":
+        if not body.secret:
+            raise HTTPException(status_code=422, detail={
+                "error": {"code": "VALIDATION_ERROR", "message": "secret (Bearer token) is required for auth_type='bearer'"}
+            })
+        secret = body.secret
+    else:
+        secret = body.secret or secrets.token_hex(32)
+
     wh_id = create_webhook(
         dealer_id=did, url=body.url, secret=secret,
         description=body.description, event_filter=body.event_filter,
+        auth_type=body.auth_type, account_filter=body.account_filter,
     )
     wh = get_webhook(wh_id, dealer_id=did)
     # Include secret in creation response only
@@ -722,6 +733,7 @@ async def update_webhook_endpoint(webhook_id: int, body: WebhookUpdate,
         webhook_id, dealer_id=dealer_id,
         url=body.url, description=body.description,
         event_filter=body.event_filter, enabled=body.enabled,
+        auth_type=body.auth_type, account_filter=body.account_filter,
     )
     result = get_webhook(webhook_id, dealer_id=dealer_id)
     result.pop("secret", None)
@@ -756,16 +768,26 @@ async def test_webhook_endpoint(webhook_id: int, auth: dict = Depends(get_api_us
 
     dealer = get_dealer(wh["dealer_id"])
     test_payload = json.dumps({
-        "event_id": 0,
+        "event_id": "evt_test_0",
+        "account_id": (dealer["prefix"] if dealer else "") + "TEST",
+        "event_code": "TEST",
+        "event_type": "Test",
+        "title": "Webhook connectivity test",
+        "name": "Test",
+        "zone": "",
+        "zone_name": "",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "dealer": {"id": dealer["id"], "prefix": dealer["prefix"], "dnis": dealer.get("dnis", ""), "name": dealer["name"]} if dealer else {},
-        "account": {"id": "TEST", "full_account": (dealer["prefix"] if dealer else "") + "TEST", "name": "Test Account", "address": "", "phone": "", "email": ""},
-        "event": {
-            "code": "TEST", "type": "Test", "description": "Webhook connectivity test",
-            "zone": "", "zone_name": "", "partition": "",
-            "message": "This is a test webhook from ARC", "sequence": "0000",
-        },
-        "validation": {"encrypted": False, "valid_message": True, "valid_timestamp": True},
+        "description": "Webhook connectivity test",
+        "dealer_id": str(wh["dealer_id"]),
+        "dealer_name": dealer["name"] if dealer else "",
+        "account_name": "Test Account",
+        "account_address": "",
+        "account_phone": "",
+        "account_email": "",
+        "partition": "",
+        "message": "This is a test webhook from ARC",
+        "sia_type": "Test",
+        "sia_description": "Webhook connectivity test",
     })
     enqueue_webhook_delivery(wh["id"], 0, test_payload)
     return {"data": {"message": f"Test webhook queued for delivery to {wh['url']}"}}

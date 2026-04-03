@@ -1449,25 +1449,26 @@ async def dealer_test_webhook(request: Request, webhook_id: int):
         return RedirectResponse("/webhooks", status_code=302)
 
     test_payload = _json.dumps({
-        "event_id": 0,
+        "event_id": "evt_test_0",
+        "account_id": dealer["prefix"] + "TEST",
+        "event_code": "TEST",
+        "event_type": "Test",
+        "title": "Webhook connectivity test",
+        "name": "Test",
+        "zone": "",
+        "zone_name": "",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "dealer": {"id": dealer["id"], "prefix": dealer["prefix"], "name": dealer["name"]},
-        "account": {"id": "TEST", "full_account": dealer["prefix"] + "TEST", "name": "Test Account", "address": "", "phone": "", "email": ""},
-        "event": {
-            "code": "TEST",
-            "type": "Test",
-            "description": "Webhook connectivity test",
-            "zone": "",
-            "zone_name": "",
-            "partition": "",
-            "message": "This is a test webhook from ARC",
-            "sequence": "0000",
-        },
-        "validation": {
-            "encrypted": False,
-            "valid_message": True,
-            "valid_timestamp": True,
-        },
+        "description": "Webhook connectivity test",
+        "dealer_id": str(dealer["id"]),
+        "dealer_name": dealer["name"],
+        "account_name": "Test Account",
+        "account_address": "",
+        "account_phone": "",
+        "account_email": "",
+        "partition": "",
+        "message": "This is a test webhook from ARC",
+        "sia_type": "Test",
+        "sia_description": "Webhook connectivity test",
     })
 
     # Enqueue the test delivery

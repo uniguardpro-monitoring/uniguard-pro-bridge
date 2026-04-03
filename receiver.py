@@ -258,7 +258,7 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
                 return
 
             webhooks = conn.execute(
-                "SELECT id, url, secret, event_filter FROM webhooks "
+                "SELECT id, url, secret, event_filter, auth_type, account_filter FROM webhooks "
                 "WHERE dealer_id = ? AND enabled = 1",
                 (dealer_id,),
             ).fetchall()
@@ -317,36 +317,63 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
             pass
 
         sia_code = event_data.get("sia_code", {})
+        zone = event_data.get("zone") or ""
+        zone_nm = zone_name if 'zone_name' in dir() else ""
+
+        # Build description: "Type - Zone Name" or "Type" or code
+        desc_parts = []
+        sia_type = sia_code.get("type", "")
+        sia_desc = sia_code.get("description", "")
+        if sia_type:
+            desc_parts.append(sia_type)
+        if zone_nm:
+            desc_parts.append(zone_nm)
+        elif sia_desc:
+            desc_parts.append(sia_desc)
+        description = " - ".join(desc_parts) if desc_parts else event_code
+
+        # Build the full account ID as transmitted (e.g. "002001")
+        full_account = event_data.get("account", "")
+
         payload = json.dumps({
-            "event_id": event_id,
+            "event_id": f"evt_{event_id}",
+            "account_id": full_account,
+            "event_code": event_code,
+            "event_type": sia_type or event_code,
+            "title": description,
+            "name": sia_type or event_code,
+            "zone": zone,
+            "zone_name": zone_nm,
             "timestamp": event_data.get("received_at"),
-            "dealer": dealer_info,
-            "account": account_info,
-            "event": {
-                "code": event_code,
-                "type": sia_code.get("type", ""),
-                "description": sia_code.get("description", ""),
-                "zone": event_data.get("zone") or "",
-                "zone_name": zone_name if 'zone_name' in dir() else "",
-                "partition": event_data.get("partition") or "",
-                "message": event_data.get("message") or "",
-                "sequence": event_data.get("sequence") or "",
-            },
-            "validation": {
-                "encrypted": bool(event_data.get("encrypted")),
-                "valid_message": bool(event_data.get("valid_message")),
-                "valid_timestamp": bool(event_data.get("valid_timestamp")),
-            },
+            "description": description,
+            "dealer_id": str(dealer_id),
+            "dealer_name": dealer_info.get("name", ""),
+            "account_name": account_info.get("name", ""),
+            "account_address": account_info.get("address", ""),
+            "account_phone": account_info.get("phone", ""),
+            "account_email": account_info.get("email", ""),
+            "partition": event_data.get("partition") or "",
+            "message": event_data.get("message") or "",
+            "sia_type": sia_type,
+            "sia_description": sia_desc,
         }, default=str)
 
         now = datetime.now(timezone.utc).isoformat()
+        # Get account portion for account_filter matching
+        acct_portion_for_filter = account_info.get("id", "").upper()
+
         with get_db() as conn:
             for wh in webhooks:
+                # Event code filter
                 filt = (wh["event_filter"] or "*").strip()
                 if filt != "*":
                     allowed = {c.strip().upper() for c in filt.split(",") if c.strip()}
                     if event_code.upper() not in allowed:
                         continue
+                # Account filter — if set, only forward events for that account
+                acct_filt = (wh["account_filter"] or "").strip().upper()
+                if acct_filt and acct_portion_for_filter != acct_filt:
+                    continue
                 conn.execute(
                     "INSERT INTO webhook_queue (webhook_id, event_id, payload, "
                     "attempts, next_attempt_at, status, created_at) "

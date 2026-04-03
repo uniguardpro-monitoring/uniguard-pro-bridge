@@ -158,7 +158,7 @@ class WebhookWorker:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _deliver(self, item: dict):
-        """Dispatch a single webhook delivery with HMAC signature."""
+        """Dispatch a single webhook delivery."""
         queue_id = item["id"]
         webhook_id = item["webhook_id"]
         event_id = item["event_id"]
@@ -166,6 +166,7 @@ class WebhookWorker:
         secret = item["secret"]
         payload = item["payload"]
         attempts = item["attempts"]
+        auth_type = item.get("auth_type", "hmac")
 
         # Skip if webhook was disabled after enqueue
         if not item.get("webhook_enabled"):
@@ -189,17 +190,27 @@ class WebhookWorker:
             mark_delivery_failed(queue_id)
             return
 
-        # Compute HMAC signature
+        # Build headers based on auth type
         timestamp = _now_iso()
-        signature = _compute_signature(secret, timestamp, payload)
-
         headers = {
             "Content-Type": "application/json",
-            "X-Webhook-Signature": f"sha256={signature}",
-            "X-Webhook-Timestamp": timestamp,
             "X-Webhook-ID": str(queue_id),
             "User-Agent": "ARC-Webhook/1.0",
         }
+
+        if auth_type == "bearer":
+            # Bearer token auth — secret is the token
+            headers["Authorization"] = f"Bearer {secret}"
+        else:
+            # HMAC-SHA256 signature auth (default)
+            # Sign just the body: HMAC-SHA256(body, secret)
+            signature = hmac.new(
+                secret.encode("utf-8"),
+                payload.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            headers["X-Webhook-Signature"] = signature
+            headers["X-Webhook-Timestamp"] = timestamp
 
         start_time = time.monotonic()
         status_code = None

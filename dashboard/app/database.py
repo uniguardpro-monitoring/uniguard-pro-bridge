@@ -198,6 +198,16 @@ def migrate_db():
             conn.execute("CREATE INDEX IF NOT EXISTS idx_webhooks_dealer_id ON webhooks(dealer_id)")
             logger.info("Created webhooks table")
 
+        # Add auth_type to webhooks (hmac or bearer)
+        if _table_exists(conn, "webhooks") and not _column_exists(conn, "webhooks", "auth_type"):
+            conn.execute("ALTER TABLE webhooks ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'hmac'")
+            logger.info("Added auth_type column to webhooks table")
+
+        # Add account_filter to webhooks (scope webhook to specific account)
+        if _table_exists(conn, "webhooks") and not _column_exists(conn, "webhooks", "account_filter"):
+            conn.execute("ALTER TABLE webhooks ADD COLUMN account_filter TEXT DEFAULT NULL")
+            logger.info("Added account_filter column to webhooks table")
+
         # Create webhook_queue table
         if not _table_exists(conn, "webhook_queue"):
             conn.execute("""
@@ -658,28 +668,30 @@ def get_enabled_webhooks_for_dealer(dealer_id):
     """Get enabled webhooks for a dealer (used by receiver enqueue)."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id, url, secret, event_filter FROM webhooks "
+            "SELECT id, url, secret, event_filter, auth_type, account_filter FROM webhooks "
             "WHERE dealer_id = ? AND enabled = 1",
             (dealer_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
 
-def create_webhook(dealer_id, url, secret, description="", event_filter="*"):
+def create_webhook(dealer_id, url, secret, description="", event_filter="*",
+                   auth_type="hmac", account_filter=None):
     """Create a new webhook. Returns the new webhook ID."""
     now = _now()
     with get_db_rw() as conn:
         conn.execute(
             "INSERT INTO webhooks (dealer_id, url, secret, description, event_filter, "
-            "enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
-            (dealer_id, url, secret, description, event_filter, now, now),
+            "auth_type, account_filter, enabled, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+            (dealer_id, url, secret, description, event_filter, auth_type, account_filter, now, now),
         )
         return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
 
 def update_webhook(webhook_id, dealer_id=None, **fields):
     """Update webhook fields. Only non-None values in fields are updated."""
-    allowed = {"url", "description", "event_filter", "enabled"}
+    allowed = {"url", "description", "event_filter", "enabled", "auth_type", "account_filter"}
     now = _now()
     set_parts = ["updated_at=?"]
     params = [now]
@@ -760,7 +772,7 @@ def get_pending_deliveries(limit=20):
     now = _now()
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT q.*, w.url, w.secret, w.enabled AS webhook_enabled "
+            "SELECT q.*, w.url, w.secret, w.auth_type, w.enabled AS webhook_enabled "
             "FROM webhook_queue q JOIN webhooks w ON q.webhook_id = w.id "
             "WHERE q.status = 'pending' AND q.next_attempt_at <= ? "
             "ORDER BY q.created_at ASC LIMIT ?",

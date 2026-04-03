@@ -176,9 +176,16 @@ class WebhookCreate(BaseModel):
     description: str = Field("", max_length=200, description="Optional label")
     event_filter: str = Field("*", max_length=200,
                                description="'*' for all events, or comma-separated SIA codes (e.g. 'BA,FA,PA')")
+    auth_type: str = Field("hmac", description="Authentication type: 'hmac' (HMAC-SHA256 signature) or 'bearer' (Authorization: Bearer token)")
+    account_filter: Optional[str] = Field(None, max_length=16,
+                                           description="Scope to a specific account ID (e.g. '001'). Null = all accounts.")
+    secret: Optional[str] = Field(None, max_length=500,
+                                   description="For bearer auth: your Bearer token. For hmac: auto-generated if omitted.")
     dealer_id: Optional[int] = Field(None, description="Dealer ID (required for admin keys, ignored for dealer keys)")
 
-    model_config = {"json_schema_extra": {"examples": [{"url": "https://app.example.com/webhooks/alarms", "description": "Production handler", "event_filter": "BA,FA,PA,MA,HA"}]}}
+    model_config = {"json_schema_extra": {"examples": [
+        {"url": "https://app.example.com/webhooks/alarms", "description": "Production handler", "event_filter": "*", "auth_type": "bearer", "secret": "your-bearer-token", "account_filter": "001"},
+    ]}}
 
 
 class WebhookUpdate(BaseModel):
@@ -186,6 +193,8 @@ class WebhookUpdate(BaseModel):
     url: Optional[str] = Field(None, pattern=r"^https://[^\s]+$", max_length=2000)
     description: Optional[str] = Field(None, max_length=200)
     event_filter: Optional[str] = Field(None, max_length=200)
+    auth_type: Optional[str] = Field(None, description="'hmac' or 'bearer'")
+    account_filter: Optional[str] = Field(None, max_length=16)
     enabled: Optional[bool] = None
 
 
@@ -196,6 +205,8 @@ class WebhookResponse(BaseModel):
     url: str
     description: str
     event_filter: str
+    auth_type: str
+    account_filter: Optional[str]
     enabled: bool
     created_at: str
     updated_at: str
@@ -208,8 +219,10 @@ class WebhookCreatedResponse(BaseModel):
     url: str
     description: str
     event_filter: str
+    auth_type: str
+    account_filter: Optional[str]
     enabled: bool
-    secret: str = Field(..., description="HMAC signing secret (shown once, copy immediately)")
+    secret: str = Field(..., description="Secret/token (shown once, copy immediately)")
     created_at: str
     updated_at: str
 
