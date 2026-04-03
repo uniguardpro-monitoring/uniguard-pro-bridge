@@ -121,6 +121,9 @@
                         <button @click="loadTab('zones')"
                                 :class="tab==='zones' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'"
                                 class="px-4 py-2 text-sm font-medium transition">Zones</button>
+                        <button @click="loadTab('webhooks')"
+                                :class="tab==='webhooks' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'"
+                                class="px-4 py-2 text-sm font-medium transition">Webhooks</button>
                     </div>
                     <div id="modal-content" class="overflow-y-auto flex-1 p-6">
                         <div class="text-gray-500 text-center py-8">Loading...</div>

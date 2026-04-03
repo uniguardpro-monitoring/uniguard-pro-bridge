@@ -664,6 +664,17 @@ def get_webhook(webhook_id, dealer_id=None):
         return dict(row) if row else None
 
 
+def get_webhooks_for_account(account_id, dealer_id=None):
+    """Get webhooks scoped to a specific account via account_filter."""
+    scope, scope_params = _dealer_scope(dealer_id)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM webhooks WHERE account_filter = ? {scope} ORDER BY created_at DESC",
+            (account_id,) + scope_params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_enabled_webhooks_for_dealer(dealer_id):
     """Get enabled webhooks for a dealer (used by receiver enqueue)."""
     with get_db() as conn:

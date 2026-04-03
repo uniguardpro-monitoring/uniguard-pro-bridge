@@ -59,6 +59,7 @@ from .database import (
     get_zone_name_map,
     get_webhooks,
     get_webhook,
+    get_webhooks_for_account,
     create_webhook,
     update_webhook,
     update_webhook_secret,
@@ -745,6 +746,185 @@ async def admin_delete_zone(request: Request, account_id: str, zone_number: str)
     return _set_csrf_cookie(resp, csrf, config.DEBUG)
 
 
+# --- Admin Account Webhooks (modal tab) ---
+
+def _account_webhooks_ctx(request, account_id, dealer_id, base_url, account_name="",
+                           success=None, error=None, new_secret=None):
+    """Build template context for the account webhooks partial."""
+    webhooks = get_webhooks_for_account(account_id, dealer_id=dealer_id)
+    for wh in webhooks:
+        wh["stats"] = get_delivery_stats(wh["id"])
+    csrf = _generate_csrf_token()
+    ctx = {
+        "request": request, "webhooks": webhooks,
+        "account_id": account_id, "account_name": account_name,
+        "base_url": base_url, "csrf_token": csrf,
+        "success": success, "error": error, "new_secret": new_secret,
+    }
+    return ctx, csrf
+
+
+@app.get(f"{P}/accounts/{{account_id}}/modal/webhooks", response_class=HTMLResponse)
+async def admin_account_modal_webhooks(request: Request, account_id: str):
+    user = require_admin(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    acct, dealer = _resolve_admin_account(account_id)
+    short_id = acct["account_id"] if acct else account_id
+    did = acct.get("dealer_id") if acct else None
+    ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, acct.get("name", "") if acct else "")
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post(f"{P}/accounts/{{account_id}}/webhooks")
+async def admin_account_create_webhook(request: Request, account_id: str):
+    user = require_admin(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    acct, dealer = _resolve_admin_account(account_id)
+    short_id = acct["account_id"] if acct else account_id
+    did = acct.get("dealer_id") if acct else None
+    url = _form_str(form, "url", max_length=2000)
+    if not WEBHOOK_URL_RE.match(url):
+        ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, error="URL must start with https://")
+        resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+        return _set_csrf_cookie(resp, csrf, config.DEBUG)
+    auth_type = _form_str(form, "auth_type") or "bearer"
+    secret = _form_str(form, "secret", max_length=500)
+    if auth_type == "bearer" and not secret:
+        ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, error="Bearer token is required")
+        resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+        return _set_csrf_cookie(resp, csrf, config.DEBUG)
+    if not secret:
+        secret = secrets.token_hex(32)
+    try:
+        create_webhook(
+            dealer_id=did, url=url, secret=secret,
+            description=_form_str(form, "description", max_length=200),
+            event_filter=_form_str(form, "event_filter", max_length=200) or "*",
+            auth_type=auth_type, account_filter=short_id,
+        )
+    except Exception as e:
+        logger.error("Error creating account webhook: %s", e)
+    ctx, csrf = _account_webhooks_ctx(
+        request, short_id, did, P,
+        success="Webhook created." + (" Copy the secret below." if auth_type != "bearer" else ""),
+        new_secret=secret if auth_type != "bearer" else None,
+    )
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post(f"{P}/accounts/{{account_id}}/webhooks/{{wh_id:int}}/edit")
+async def admin_account_edit_webhook(request: Request, account_id: str, wh_id: int):
+    user = require_admin(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    acct, _ = _resolve_admin_account(account_id)
+    short_id = acct["account_id"] if acct else account_id
+    did = acct.get("dealer_id") if acct else None
+    url = _form_str(form, "url", max_length=2000)
+    if url and not WEBHOOK_URL_RE.match(url):
+        ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, error="URL must start with https://")
+        resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+        return _set_csrf_cookie(resp, csrf, config.DEBUG)
+    update_webhook(wh_id, url=url or None,
+                   description=_form_str(form, "description", max_length=200) or None,
+                   event_filter=_form_str(form, "event_filter", max_length=200) or None)
+    ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, success="Webhook updated.")
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post(f"{P}/accounts/{{account_id}}/webhooks/{{wh_id:int}}/delete")
+async def admin_account_delete_webhook(request: Request, account_id: str, wh_id: int):
+    user = require_admin(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    acct, _ = _resolve_admin_account(account_id)
+    short_id = acct["account_id"] if acct else account_id
+    did = acct.get("dealer_id") if acct else None
+    delete_webhook(wh_id)
+    ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, success="Webhook deleted.")
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post(f"{P}/accounts/{{account_id}}/webhooks/{{wh_id:int}}/toggle")
+async def admin_account_toggle_webhook(request: Request, account_id: str, wh_id: int):
+    user = require_admin(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    acct, _ = _resolve_admin_account(account_id)
+    short_id = acct["account_id"] if acct else account_id
+    did = acct.get("dealer_id") if acct else None
+    wh = get_webhook(wh_id)
+    if wh:
+        update_webhook(wh_id, enabled=0 if wh["enabled"] else 1)
+    ctx, csrf = _account_webhooks_ctx(request, short_id, did, P)
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post(f"{P}/accounts/{{account_id}}/webhooks/{{wh_id:int}}/test")
+async def admin_account_test_webhook(request: Request, account_id: str, wh_id: int):
+    user = require_admin(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    acct, _ = _resolve_admin_account(account_id)
+    short_id = acct["account_id"] if acct else account_id
+    did = acct.get("dealer_id") if acct else None
+    wh = get_webhook(wh_id)
+    if wh:
+        dealer = get_dealer(wh["dealer_id"]) if wh.get("dealer_id") else None
+        test_payload = _json.dumps({
+            "event_id": "evt_test_0",
+            "account_id": (dealer["prefix"] if dealer else "") + short_id,
+            "event_code": "TEST", "event_type": "Test", "title": "Webhook connectivity test", "name": "Test",
+            "zone": "", "zone_name": "",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "description": "Webhook connectivity test",
+            "dealer_id": str(wh.get("dealer_id", "")),
+            "dealer_name": dealer["name"] if dealer else "",
+            "account_name": acct.get("name", "") if acct else "",
+            "account_address": "", "account_phone": "", "account_email": "",
+            "partition": "", "message": "This is a test webhook from ARC",
+            "sia_type": "Test", "sia_description": "Webhook connectivity test",
+        })
+        enqueue_webhook_delivery(wh["id"], 0, test_payload)
+    ctx, csrf = _account_webhooks_ctx(request, short_id, did, P, success="Test webhook queued.")
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.get(f"{P}/accounts/{{account_id}}/webhooks/{{wh_id:int}}/deliveries", response_class=HTMLResponse)
+async def admin_account_webhook_deliveries(request: Request, account_id: str, wh_id: int):
+    user = require_admin(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    deliveries = get_delivery_log(wh_id, limit=25)
+    wh = get_webhook(wh_id)
+    return templates.TemplateResponse("dealer/webhook_deliveries.html", {
+        "request": request, "deliveries": deliveries, "webhook": wh,
+    })
+
+
 # --- Admin Settings ---
 @app.get(f"{P}/settings", response_class=HTMLResponse)
 async def admin_settings_page(request: Request):
@@ -1322,6 +1502,156 @@ async def dealer_delete_zone(request: Request, account_id: str, zone_number: str
         "base_url": "", "csrf_token": csrf, "success": "Zone deleted.",
     })
     return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+# --- Dealer Account Webhooks (modal tab) ---
+
+@app.get("/accounts/{account_id}/modal/webhooks", response_class=HTMLResponse)
+async def dealer_account_modal_webhooks(request: Request, account_id: str):
+    user, dealer = require_dealer(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    acct = get_account(account_id, dealer_id=dealer["id"])
+    if not acct:
+        return HTMLResponse("<div class='text-red-400'>Account not found.</div>")
+    ctx, csrf = _account_webhooks_ctx(request, account_id, dealer["id"], "", acct.get("name", ""))
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post("/accounts/{account_id}/webhooks")
+async def dealer_account_create_webhook(request: Request, account_id: str):
+    user, dealer = require_dealer(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    did = dealer["id"]
+    url = _form_str(form, "url", max_length=2000)
+    if not WEBHOOK_URL_RE.match(url):
+        ctx, csrf = _account_webhooks_ctx(request, account_id, did, "", error="URL must start with https://")
+        resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+        return _set_csrf_cookie(resp, csrf, config.DEBUG)
+    auth_type = _form_str(form, "auth_type") or "bearer"
+    secret = _form_str(form, "secret", max_length=500)
+    if auth_type == "bearer" and not secret:
+        ctx, csrf = _account_webhooks_ctx(request, account_id, did, "", error="Bearer token is required")
+        resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+        return _set_csrf_cookie(resp, csrf, config.DEBUG)
+    if not secret:
+        secret = secrets.token_hex(32)
+    try:
+        create_webhook(
+            dealer_id=did, url=url, secret=secret,
+            description=_form_str(form, "description", max_length=200),
+            event_filter=_form_str(form, "event_filter", max_length=200) or "*",
+            auth_type=auth_type, account_filter=account_id,
+        )
+    except Exception as e:
+        logger.error("Error creating dealer account webhook: %s", e)
+    ctx, csrf = _account_webhooks_ctx(
+        request, account_id, did, "",
+        success="Webhook created." + (" Copy the secret below." if auth_type != "bearer" else ""),
+        new_secret=secret if auth_type != "bearer" else None,
+    )
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post("/accounts/{account_id}/webhooks/{wh_id:int}/edit")
+async def dealer_account_edit_webhook(request: Request, account_id: str, wh_id: int):
+    user, dealer = require_dealer(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    did = dealer["id"]
+    url = _form_str(form, "url", max_length=2000)
+    if url and not WEBHOOK_URL_RE.match(url):
+        ctx, csrf = _account_webhooks_ctx(request, account_id, did, "", error="URL must start with https://")
+        resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+        return _set_csrf_cookie(resp, csrf, config.DEBUG)
+    update_webhook(wh_id, dealer_id=did, url=url or None,
+                   description=_form_str(form, "description", max_length=200) or None,
+                   event_filter=_form_str(form, "event_filter", max_length=200) or None)
+    ctx, csrf = _account_webhooks_ctx(request, account_id, did, "", success="Webhook updated.")
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post("/accounts/{account_id}/webhooks/{wh_id:int}/delete")
+async def dealer_account_delete_webhook(request: Request, account_id: str, wh_id: int):
+    user, dealer = require_dealer(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    delete_webhook(wh_id, dealer_id=dealer["id"])
+    ctx, csrf = _account_webhooks_ctx(request, account_id, dealer["id"], "", success="Webhook deleted.")
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post("/accounts/{account_id}/webhooks/{wh_id:int}/toggle")
+async def dealer_account_toggle_webhook(request: Request, account_id: str, wh_id: int):
+    user, dealer = require_dealer(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    wh = get_webhook(wh_id, dealer_id=dealer["id"])
+    if wh:
+        update_webhook(wh_id, dealer_id=dealer["id"], enabled=0 if wh["enabled"] else 1)
+    ctx, csrf = _account_webhooks_ctx(request, account_id, dealer["id"], "")
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.post("/accounts/{account_id}/webhooks/{wh_id:int}/test")
+async def dealer_account_test_webhook(request: Request, account_id: str, wh_id: int):
+    user, dealer = require_dealer(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    form = await request.form()
+    if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
+        return HTMLResponse("CSRF error", status_code=403)
+    wh = get_webhook(wh_id, dealer_id=dealer["id"])
+    if wh:
+        test_payload = _json.dumps({
+            "event_id": "evt_test_0",
+            "account_id": dealer["prefix"] + account_id,
+            "event_code": "TEST", "event_type": "Test", "title": "Webhook connectivity test", "name": "Test",
+            "zone": "", "zone_name": "",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "description": "Webhook connectivity test",
+            "dealer_id": str(dealer["id"]),
+            "dealer_name": dealer["name"],
+            "account_name": "", "account_address": "", "account_phone": "", "account_email": "",
+            "partition": "", "message": "This is a test webhook from ARC",
+            "sia_type": "Test", "sia_description": "Webhook connectivity test",
+        })
+        enqueue_webhook_delivery(wh["id"], 0, test_payload)
+    ctx, csrf = _account_webhooks_ctx(request, account_id, dealer["id"], "", success="Test webhook queued.")
+    resp = templates.TemplateResponse("partials/account_webhooks.html", ctx)
+    return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.get("/accounts/{account_id}/webhooks/{wh_id:int}/deliveries", response_class=HTMLResponse)
+async def dealer_account_webhook_deliveries(request: Request, account_id: str, wh_id: int):
+    user, dealer = require_dealer(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    wh = get_webhook(wh_id, dealer_id=dealer["id"])
+    if not wh:
+        return HTMLResponse("Not found", status_code=404)
+    deliveries = get_delivery_log(wh_id, limit=25)
+    return templates.TemplateResponse("dealer/webhook_deliveries.html", {
+        "request": request, "deliveries": deliveries, "webhook": wh,
+    })
 
 
 @app.get("/settings", response_class=HTMLResponse)
