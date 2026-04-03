@@ -862,6 +862,7 @@ def get_webhook_stats_all():
         rows = conn.execute("""
             SELECT w.id AS webhook_id, w.dealer_id, w.url, w.description,
                    w.event_filter, w.enabled, w.created_at,
+                   w.auth_type, w.account_filter,
                    d.name AS dealer_name, d.prefix AS dealer_prefix,
                    COALESCE(SUM(CASE WHEN wd.status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END), 0) AS delivered,
                    COALESCE(SUM(CASE WHEN wd.status_code IS NULL OR wd.status_code NOT BETWEEN 200 AND 299 THEN 1 ELSE 0 END), 0) AS failed,

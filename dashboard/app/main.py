@@ -1934,3 +1934,16 @@ async def admin_webhooks_page(request: Request):
         "csrf_token": csrf,
     })
     return _set_csrf_cookie(resp, csrf, config.DEBUG)
+
+
+@app.get(f"{P}/webhooks/{{webhook_id:int}}/deliveries", response_class=HTMLResponse)
+async def admin_webhook_delivery_log(request: Request, webhook_id: int):
+    """HTMX partial: delivery log for admin webhook overview."""
+    user = require_admin(request)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
+    deliveries = get_delivery_log(webhook_id, limit=25)
+    wh = get_webhook(webhook_id)
+    return templates.TemplateResponse("dealer/webhook_deliveries.html", {
+        "request": request, "deliveries": deliveries, "webhook": wh,
+    })
