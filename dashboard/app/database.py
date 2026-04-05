@@ -853,20 +853,16 @@ def delete_webhook(webhook_id, dealer_id=None):
     """Delete a webhook (cascade deletes queue and delivery rows)."""
     scope, scope_params = _dealer_scope(dealer_id)
     with get_db_rw() as conn:
-        conn.execute(
-            f"DELETE FROM webhook_queue WHERE webhook_id = ? {scope}".replace(
-                "AND dealer_id = ?", ""
-            ),
-            (webhook_id,),
-        )
-        conn.execute(
-            f"DELETE FROM webhook_deliveries WHERE webhook_id = ?",
-            (webhook_id,),
-        )
-        conn.execute(
-            f"DELETE FROM webhooks WHERE id = ? {scope}",
+        # Verify webhook exists (and belongs to dealer if scoped)
+        wh = conn.execute(
+            f"SELECT id FROM webhooks WHERE id = ? {scope}",
             (webhook_id,) + scope_params,
-        )
+        ).fetchone()
+        if not wh:
+            return
+        conn.execute("DELETE FROM webhook_queue WHERE webhook_id = ?", (webhook_id,))
+        conn.execute("DELETE FROM webhook_deliveries WHERE webhook_id = ?", (webhook_id,))
+        conn.execute("DELETE FROM webhooks WHERE id = ?", (webhook_id,))
 
 
 # ---------------------------------------------------------------------------
@@ -947,7 +943,7 @@ def log_delivery_attempt(webhook_id, event_id, attempt, status_code,
             "INSERT INTO webhook_deliveries (webhook_id, event_id, attempt, status_code, "
             "response_body, error, duration_ms, delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (webhook_id, event_id, attempt, status_code,
-             (response_body or "")[:500], error or "", duration_ms, now),
+             (response_body or "")[:200], error or "", duration_ms, now),
         )
 
 

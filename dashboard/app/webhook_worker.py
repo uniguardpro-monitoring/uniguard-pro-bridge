@@ -64,16 +64,6 @@ def _is_private_ip(hostname: str) -> bool:
     return False
 
 
-def _compute_signature(secret: str, timestamp: str, body: str) -> str:
-    """Compute HMAC-SHA256 signature for webhook payload."""
-    message = f"{timestamp}.{body}"
-    return hmac.new(
-        secret.encode("utf-8"),
-        message.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-
-
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -219,7 +209,7 @@ class WebhookWorker:
         try:
             response = await self._client.post(url, content=payload, headers=headers)
             status_code = response.status_code
-            response_body = response.text[:500]
+            response_body = response.text[:200]
             duration_ms = int((time.monotonic() - start_time) * 1000)
 
             if 200 <= status_code < 300:

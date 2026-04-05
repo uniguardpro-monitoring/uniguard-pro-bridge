@@ -135,13 +135,13 @@ router = APIRouter(prefix="/api/v1")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 # In-memory rate limiter: {key_prefix: [timestamp, ...]}
-_rate_buckets: dict[str, list[float]] = defaultdict(list)
+_rate_buckets: dict[int, list[float]] = defaultdict(list)
 
 
-def _is_rate_limited(prefix: str) -> bool:
-    """Check if a key prefix has exceeded the rate limit."""
+def _is_rate_limited(key_id: int) -> bool:
+    """Check if an API key has exceeded the rate limit."""
     now = time.monotonic()
-    bucket = _rate_buckets[prefix]
+    bucket = _rate_buckets[key_id]
     # Purge old entries
     cutoff = now - API_RATE_WINDOW
     _rate_buckets[prefix] = bucket = [t for t in bucket if t > cutoff]
@@ -183,8 +183,7 @@ async def get_api_user(
             detail={"error": {"code": "INVALID_KEY", "message": "Invalid or disabled API key"}},
         )
 
-    prefix = record["key_prefix"]
-    if _is_rate_limited(prefix):
+    if _is_rate_limited(record["id"]):
         raise HTTPException(
             status_code=429,
             detail={"error": {"code": "RATE_LIMITED", "message": f"Rate limit exceeded ({API_RATE_LIMIT}/min)"}},

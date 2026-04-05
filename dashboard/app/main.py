@@ -139,7 +139,8 @@ def _verify_csrf(request_token, cookie_token) -> bool:
 
 
 def _set_csrf_cookie(response, csrf, is_debug=False):
-    response.set_cookie("csrf_token", csrf, httponly=True, samesite="strict", secure=not is_debug)
+    """Set CSRF cookie. is_debug parameter is ignored (always secure)."""
+    response.set_cookie("csrf_token", csrf, httponly=True, samesite="strict", secure=True)
     return response
 
 
@@ -342,6 +343,7 @@ def _login_flow(request, form, username, password, ip, template, redirect_to, ro
     user = authenticate_user(username, password)
     if not user or (role_check and not role_check(user)):
         record_failed_login(ip)
+        logger.warning("Login FAILED for '%s' from %s", username, ip)
         csrf = _generate_csrf_token()
         resp = templates.TemplateResponse(template, {
             "request": request, "error": "Invalid credentials", "csrf_token": csrf
@@ -353,7 +355,7 @@ def _login_flow(request, form, username, password, ip, template, redirect_to, ro
     token = create_session_token(user["user_id"], user["username"], user["role"], user.get("dealer_id"))
     response = RedirectResponse(redirect_to, status_code=302)
     response.set_cookie("session", token, max_age=config.SESSION_MAX_AGE,
-                         httponly=True, samesite="strict", secure=not config.DEBUG)
+                         httponly=True, samesite="strict", secure=True)
     response.delete_cookie("csrf_token")
     return response
 

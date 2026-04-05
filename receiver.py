@@ -9,6 +9,7 @@ alarm.com account structure:
   - Account (4-digit hex): Alarm system identifier, transmitted in SIA-DCS messages
   - Linecard/DINS (up to 5 hex): Receiver routing identifier assigned by us
 """
+import calendar
 import json
 import logging
 import os
@@ -291,7 +292,7 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
                     if zrow:
                         zone_name = zrow["zone_name"]
         except Exception:
-            pass
+            logger.debug("Failed to resolve account/zone names for webhook payload")
 
         sia_code = event_data.get("sia_code", {})
         sia_type = sia_code.get("type", "")
@@ -308,7 +309,6 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
         description = " - ".join(desc_parts) if desc_parts else event_code
 
         # timestamp as Unix epoch integer
-        import calendar
         ts_iso = event_data.get("received_at", "")
         try:
             dt = datetime.fromisoformat(ts_iso)
