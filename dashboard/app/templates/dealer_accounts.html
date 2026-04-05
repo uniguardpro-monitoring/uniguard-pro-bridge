@@ -13,8 +13,8 @@
     <div>
         <h1 class="text-2xl font-bold text-white">{{ dealer.name }}</h1>
         <div class="flex items-center space-x-4 mt-1 text-sm text-gray-400">
-            <span>Prefix: <span class="font-mono text-blue-400 font-bold">{{ dealer.prefix }}</span></span>
-            <span>DNIS: <span class="font-mono text-blue-400">{{ dealer.dnis }}</span></span>
+            <span>Linecard: <span class="font-mono text-blue-400 font-bold">{{ dealer.dnis }}</span></span>
+            <span>DNIS: <span class="font-mono text-gray-400">{{ dealer.dnis }}</span></span>
             {% if dealer.phone %}<span>{{ dealer.phone }}</span>{% endif %}
             {% if dealer.email %}<span>{{ dealer.email }}</span>{% endif %}
             {% if dealer.enabled %}
@@ -43,8 +43,8 @@
     </h2>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-            <span class="text-gray-500 text-xs block">Dealer Prefix</span>
-            <span class="font-mono text-white text-lg font-bold">{{ dealer.prefix }}</span>
+            <span class="text-gray-500 text-xs block">Linecard / DNIS</span>
+            <span class="font-mono text-white text-lg font-bold">{{ dealer.dnis }}</span>
         </div>
         <div>
             <span class="text-gray-500 text-xs block">Linecard / DNIS</span>
@@ -82,7 +82,7 @@
                 </div>
             </div>
             <div class="text-white font-semibold">{{ acct.name }}</div>
-            <div class="text-gray-500 text-xs mt-1 font-mono">Full Account: {{ dealer.prefix }}{{ acct.account_id }} &middot; DNIS: {{ dealer.dnis }}</div>
+            <div class="text-gray-500 text-xs mt-1 font-mono">Account: {{ acct.account_id }} &middot; Linecard: {{ dealer.dnis }}</div>
             {% if acct.address %}<div class="text-gray-400 text-sm mt-1">{{ acct.address }}</div>{% endif %}
             {% if acct.phone %}<div class="text-gray-400 text-sm">{{ acct.phone }}</div>{% endif %}
             {% if acct.email %}<div class="text-gray-400 text-sm">{{ acct.email }}</div>{% endif %}
@@ -105,7 +105,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="flex items-center space-x-2 mb-2">
                 <span class="font-mono text-lg font-bold text-blue-400">{{ acct.account_id }}</span>
-                <span class="text-gray-500 text-xs font-mono">{{ dealer.prefix }}{{ acct.account_id }}</span>
+                <span class="text-gray-500 text-xs font-mono">{{ acct.account_id }}</span>
             </div>
             <div>
                 <label class="text-gray-400 text-xs">Name</label>
@@ -168,7 +168,7 @@
                     <input type="text" name="account_id" value="{{ next_account_id }}" required
                         pattern="[0-9A-Fa-f]{1,16}"
                         class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm font-mono">
-                    <p class="text-gray-500 text-xs mt-1">Full: {{ dealer.prefix }}<span class="text-blue-400">{{ next_account_id }}</span></p>
+                    <p class="text-gray-500 text-xs mt-1">Account: <span class="text-blue-400">{{ next_account_id }}</span></p>
                 </div>
                 <div>
                     <label class="text-gray-400 text-xs block mb-1">Name <span class="text-red-400">*</span></label>

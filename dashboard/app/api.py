@@ -40,7 +40,7 @@ from .database import (
     get_events_since, get_latest_event_id, get_last_heartbeat,
     get_recent_critical_events, get_webhook, get_webhooks,
     get_zones,
-    next_account_id, next_dealer_prefix,
+    next_account_id, next_dealer_prefix, next_linecard,
     update_account, update_api_key_last_used, update_dealer, update_webhook,
     upsert_zone,
 )
@@ -330,11 +330,11 @@ async def list_dealers(auth: dict = Depends(require_api_admin)):
 async def create_dealer_endpoint(body: DealerCreate, auth: dict = Depends(require_api_admin)):
     """Create a new dealer account. **Admin only.**
 
-    A unique 3-digit prefix is automatically assigned.
+    A unique 8-hex linecard/DNIS is automatically assigned for signal routing.
     """
-    prefix = next_dealer_prefix()
+    linecard = next_linecard()
     dealer_id = create_dealer(
-        prefix=prefix, dnis=body.dnis, name=body.name,
+        prefix="000", dnis=linecard, name=body.name,
         phone=body.phone, email=body.email, notes=body.notes,
     )
     dealer = get_dealer(dealer_id)

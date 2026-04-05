@@ -46,12 +46,11 @@ class PaginatedResponse(BaseModel):
 class DealerCreate(BaseModel):
     """Create a new dealer account."""
     name: str = Field(..., min_length=1, max_length=200, description="Dealer company name")
-    dnis: str = Field("01", pattern=r"^[0-9A-Fa-f]{1,8}$", description="DNIS / linecard identifier (hex)")
     phone: str = Field("", max_length=50, description="Contact phone number")
     email: str = Field("", max_length=200, description="Contact email address")
     notes: str = Field("", max_length=2000, description="Internal notes")
 
-    model_config = {"json_schema_extra": {"examples": [{"name": "Acme Security", "dnis": "01", "phone": "555-0100", "email": "ops@acmesec.com"}]}}
+    model_config = {"json_schema_extra": {"examples": [{"name": "Acme Security", "phone": "555-0100", "email": "ops@acmesec.com"}]}}
 
 
 class DealerUpdate(BaseModel):
@@ -66,8 +65,8 @@ class DealerUpdate(BaseModel):
 class DealerResponse(BaseModel):
     """Dealer record."""
     id: int
-    prefix: str = Field(..., description="3-digit dealer prefix (auto-assigned)")
-    dnis: str
+    prefix: str = Field(..., description="Legacy prefix (deprecated)")
+    dnis: str = Field(..., description="8-hex linecard/DNIS for signal routing")
     name: str
     phone: str
     email: str
@@ -83,8 +82,8 @@ class DealerResponse(BaseModel):
 
 class AccountCreate(BaseModel):
     """Create a new alarm system account."""
-    account_id: Optional[str] = Field(None, pattern=r"^[0-9A-Fa-f]{1,16}$",
-                                       description="Hex account ID (auto-generated if omitted)")
+    account_id: Optional[str] = Field(None, pattern=r"^[0-9]{6}$",
+                                       description="6-digit account number (auto-generated if omitted)")
     name: str = Field(..., min_length=1, max_length=200, description="Account / property name")
     address: str = Field("", max_length=500, description="Property address")
     phone: str = Field("", max_length=50, description="Contact phone")

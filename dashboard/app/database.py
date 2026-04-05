@@ -1,6 +1,7 @@
 """Database access layer."""
 import logging
 import os
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -269,6 +270,9 @@ def migrate_db():
     # Seed default dealer from env vars if no dealers exist
     _seed_default_dealer()
 
+    # Migrate to linecard-based dealer identification
+    _migrate_to_linecard_system()
+
 
 def _seed_default_dealer():
     """Create a default dealer from env vars if the dealers table is empty."""
@@ -288,6 +292,117 @@ def _seed_default_dealer():
         conn.execute("UPDATE events SET dealer_id = ? WHERE dealer_id IS NULL", (dealer_id,))
         conn.execute("UPDATE accounts SET dealer_id = ? WHERE dealer_id IS NULL", (dealer_id,))
         logger.info("Seeded default dealer (prefix=%s, dnis=%s, id=%d) and backfilled data", prefix, dnis, dealer_id)
+
+
+def _migrate_to_linecard_system():
+    """Migrate from prefix-based to linecard/DNIS-based dealer identification.
+
+    - Assigns random 8-hex linecards to dealers (skips dealer 1 / Alarm.com Heart Beat)
+    - Reassigns account_ids to 6-digit globally sequential numbers
+    - Updates events, webhooks, and zones tables to match new account_ids
+    - Idempotent: detects if already migrated by checking account_id format
+    """
+    with get_db_rw() as conn:
+        # Check if migration is needed: are there any old-format account_ids (< 6 chars)?
+        accounts = conn.execute(
+            "SELECT account_id, dealer_id, rowid FROM accounts ORDER BY rowid"
+        ).fetchall()
+        if not accounts:
+            return
+        # If all account_ids are already 6-digit numeric, skip
+        needs_migration = any(
+            len(a["account_id"]) < 6 or not a["account_id"].isdigit()
+            for a in accounts if a["dealer_id"] != 1  # skip dealer 1
+        )
+        if not needs_migration:
+            return
+
+        logger.info("Starting linecard system migration...")
+
+        # Step 1: Assign unique 8-hex linecards to dealers (skip dealer 1)
+        dealers = conn.execute("SELECT id, prefix, dnis FROM dealers ORDER BY id").fetchall()
+        for d in dealers:
+            if d["id"] == 1:
+                continue  # Alarm.com Heart Beat stays unchanged
+            # Generate random 8-hex linecard
+            while True:
+                new_dnis = secrets.token_hex(4).upper()  # 8 hex chars
+                existing = conn.execute(
+                    "SELECT COUNT(*) FROM dealers WHERE dnis = ?", (new_dnis,)
+                ).fetchone()[0]
+                if existing == 0:
+                    break
+            conn.execute("UPDATE dealers SET dnis = ? WHERE id = ?", (new_dnis, d["id"]))
+            logger.info("Dealer %d: assigned linecard %s (was prefix=%s, dnis=%s)",
+                        d["id"], new_dnis, d["prefix"], d["dnis"])
+
+        # Step 2: Reassign account_ids to 6-digit sequential (skip dealer 1)
+        next_id = 1
+        account_map = {}  # (old_dealer_id, old_account_id) -> new_account_id
+        for a in accounts:
+            if a["dealer_id"] == 1:
+                continue
+            old_id = a["account_id"]
+            new_id = str(next_id).zfill(6)
+            account_map[(a["dealer_id"], old_id)] = new_id
+            conn.execute(
+                "UPDATE accounts SET account_id = ? WHERE rowid = ?",
+                (new_id, a["rowid"]),
+            )
+            logger.info("Account: %s (dealer %d) -> %s", old_id, a["dealer_id"], new_id)
+            next_id += 1
+
+        # Step 3: Update events table — map old prefix+account to new 6-digit ID
+        # Build prefix-to-dealer map for parsing old event account_ids
+        prefix_map = {}
+        for d in dealers:
+            if d["id"] == 1:
+                continue
+            prefix_map[d["prefix"]] = d["id"]
+
+        # Get all events for non-dealer-1 accounts
+        events = conn.execute(
+            "SELECT id, account_id, dealer_id FROM events WHERE dealer_id IS NOT NULL AND dealer_id != 1"
+        ).fetchall()
+        updated_events = 0
+        for evt in events:
+            old_evt_acct = evt["account_id"]
+            did = evt["dealer_id"]
+            # Try to find the old account portion by stripping known prefixes
+            old_acct_portion = None
+            for prefix, prefix_did in prefix_map.items():
+                if prefix_did == did and old_evt_acct.startswith(prefix):
+                    old_acct_portion = old_evt_acct[len(prefix):]
+                    break
+                short = prefix.lstrip("0")
+                if short and prefix_did == did and old_evt_acct.startswith(short):
+                    old_acct_portion = old_evt_acct[len(short):]
+                    break
+            if old_acct_portion and (did, old_acct_portion) in account_map:
+                new_acct = account_map[(did, old_acct_portion)]
+                conn.execute(
+                    "UPDATE events SET account_id = ? WHERE id = ?",
+                    (new_acct, evt["id"]),
+                )
+                updated_events += 1
+
+        logger.info("Updated %d events with new account_ids", updated_events)
+
+        # Step 4: Update webhooks account_filter
+        for (old_did, old_acct), new_acct in account_map.items():
+            conn.execute(
+                "UPDATE webhooks SET account_filter = ? WHERE account_filter = ? AND dealer_id = ?",
+                (new_acct, old_acct, old_did),
+            )
+
+        # Step 5: Update zones account_id
+        for (old_did, old_acct), new_acct in account_map.items():
+            conn.execute(
+                "UPDATE zones SET account_id = ? WHERE account_id = ? AND dealer_id = ?",
+                (new_acct, old_acct, old_did),
+            )
+
+        logger.info("Linecard system migration complete")
 
 
 # ---------------------------------------------------------------------------
@@ -424,11 +539,21 @@ def get_dealer_by_prefix(prefix):
 
 
 def next_dealer_prefix():
-    """Generate the next available unique prefix (3-digit)."""
+    """DEPRECATED: Use next_linecard() instead. Kept for backward compatibility."""
+    return next_linecard()
+
+
+def next_linecard():
+    """Generate a unique random 8-hex-character linecard/DNIS."""
     with get_db() as conn:
-        row = conn.execute("SELECT MAX(CAST(prefix AS INTEGER)) FROM dealers").fetchone()
-        max_prefix = row[0] if row[0] is not None else 0
-    return str(max_prefix + 1).zfill(3)
+        for _ in range(100):  # safety limit
+            candidate = secrets.token_hex(4).upper()
+            exists = conn.execute(
+                "SELECT COUNT(*) FROM dealers WHERE dnis = ?", (candidate,)
+            ).fetchone()[0]
+            if exists == 0:
+                return candidate
+    raise RuntimeError("Failed to generate unique linecard after 100 attempts")
 
 
 def create_dealer(prefix, dnis, name, phone="", email="", notes=""):
@@ -484,21 +609,15 @@ def get_dealer_user(dealer_id):
 # Account CRUD (dealer-scoped)
 # ---------------------------------------------------------------------------
 
-def next_account_id(dealer_id):
-    """Generate the next available 3-digit hex account ID for a dealer."""
+def next_account_id(dealer_id=None):
+    """Generate the next available 6-digit sequential account ID (global)."""
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT account_id FROM accounts WHERE dealer_id = ?", (dealer_id,)
-        ).fetchall()
-    max_val = 0
-    for r in rows:
-        try:
-            val = int(r["account_id"], 16)
-            if val > max_val:
-                max_val = val
-        except (ValueError, TypeError):
-            pass
-    return format(max_val + 1, "03X")
+        row = conn.execute(
+            "SELECT MAX(CAST(account_id AS INTEGER)) FROM accounts "
+            "WHERE account_id GLOB '[0-9][0-9][0-9][0-9][0-9][0-9]'"
+        ).fetchone()
+        max_val = row[0] if row[0] is not None else 0
+    return str(max_val + 1).zfill(6)
 
 
 def get_accounts(dealer_id=None, include_archived=False):

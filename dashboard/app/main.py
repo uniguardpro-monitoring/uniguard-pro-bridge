@@ -51,6 +51,7 @@ from .database import (
     delete_dealer,
     get_dealer_user,
     next_dealer_prefix,
+    next_linecard,
     next_account_id,
     get_zones,
     upsert_zone,
@@ -89,9 +90,8 @@ EVENT_SEVERITY = {
     "RX": "info",
 }
 
-ACCOUNT_ID_RE = re.compile(r"^[0-9A-Fa-f]{1,16}$")
-PREFIX_RE = re.compile(r"^[0-9]{3}$")
-DNIS_RE = re.compile(r"^[0-9A-Fa-f]{1,8}$")
+ACCOUNT_ID_RE = re.compile(r"^[0-9]{6}$")
+LINECARD_RE = re.compile(r"^[0-9A-Fa-f]{1,8}$")
 WEBHOOK_URL_RE = re.compile(r"^https://[^\s]+$", re.IGNORECASE)
 
 
@@ -104,21 +104,8 @@ def get_severity(code):
 
 
 def normalize_account(account_id, prefix=None):
-    """Strip the dealer prefix from an account ID for display.
-
-    SIA DC-09 sends prefix+account (e.g. prefix '001' + account '234' = '001234').
-    Some event types strip leading zeros (e.g. '1234' where '1' is stripped '001').
-    """
-    if not account_id:
-        return ""
-    if not prefix:
-        return account_id
-    if account_id.startswith(prefix):
-        return account_id[len(prefix):]
-    short_prefix = prefix.lstrip("0")
-    if short_prefix and account_id.startswith(short_prefix):
-        return account_id[len(short_prefix):]
-    return account_id
+    """Return account_id as-is. Prefix stripping no longer needed in linecard system."""
+    return account_id or ""
 
 
 def _client_ip(request: Request) -> str:
@@ -630,24 +617,11 @@ async def admin_delete_account(request: Request, account_id: str):
 
 # --- Admin Account Modal (HTMX partials) ---
 def _resolve_admin_account(account_id_raw):
-    """Resolve an account from a raw ID that may include dealer prefix."""
+    """Resolve an account by ID. In linecard system, account_id is used directly."""
     acct = get_account(account_id_raw)
     if acct:
-        return acct, None
-    # Try stripping known dealer prefixes
-    for d in get_dealers():
-        prefix = d["prefix"]
-        if account_id_raw.startswith(prefix):
-            short_id = account_id_raw[len(prefix):]
-            acct = get_account(short_id)
-            if acct:
-                return acct, d
-        short_prefix = prefix.lstrip("0")
-        if short_prefix and account_id_raw.startswith(short_prefix):
-            short_id = account_id_raw[len(short_prefix):]
-            acct = get_account(short_id)
-            if acct:
-                return acct, d
+        dealer = get_dealer(acct["dealer_id"]) if acct.get("dealer_id") else None
+        return acct, dealer
     return None, None
 
 
@@ -1000,7 +974,7 @@ async def admin_dealers_page(request: Request):
         d["account_count"] = len(get_accounts(dealer_id=d["id"]))
     resp = templates.TemplateResponse("dealers.html", {
         "request": request, "user": user, "dealers": dealers,
-        "csrf_token": csrf, "next_prefix": next_dealer_prefix(), "dnis": DEFAULT_DNIS,
+        "csrf_token": csrf, "next_linecard": next_linecard(),
     })
     return _set_csrf_cookie(resp, csrf, config.DEBUG)
 
@@ -1014,25 +988,24 @@ async def admin_create_dealer(request: Request):
     if not _verify_csrf(form.get("csrf_token"), request.cookies.get("csrf_token")):
         return RedirectResponse(f"{P}/dealers", status_code=302)
 
-    prefix = _form_str(form, "prefix")
-    dnis = _form_str(form, "dnis").upper()
+    linecard = _form_str(form, "linecard").upper() or next_linecard()
     name = _form_str(form, "name")
     phone = _form_str(form, "phone")
     email = _form_str(form, "email")
     notes = _form_str(form, "notes")
     password = form.get("password", "")
 
-    if not PREFIX_RE.match(prefix) or not DNIS_RE.match(dnis) or not name:
+    if not LINECARD_RE.match(linecard) or not name:
         return RedirectResponse(f"{P}/dealers", status_code=302)
     if not email or len(password) < 8:
         return RedirectResponse(f"{P}/dealers", status_code=302)
 
     try:
-        dealer_id = create_dealer(prefix=prefix, dnis=dnis, name=name,
+        dealer_id = create_dealer(prefix="000", dnis=linecard, name=name,
                                    phone=phone, email=email, notes=notes)
         create_user(email, password, role="dealer", dealer_id=dealer_id)
-        logger.info("Dealer '%s' (prefix=%s) created with login '%s' by '%s'",
-                     name, prefix, email, user["username"])
+        logger.info("Dealer '%s' (linecard=%s) created with login '%s' by '%s'",
+                     name, linecard, email, user["username"])
     except Exception as e:
         logger.error("Error creating dealer: %s", e)
     return RedirectResponse(f"{P}/dealers", status_code=302)
@@ -1419,18 +1392,8 @@ async def dealer_account_modal_events(request: Request, account_id: str):
     did = dealer["id"]
     offset = _safe_int(request.query_params.get("offset"), default=0, minimum=0)
     limit = 25
-    # Events store full prefix+account_id, so search for both forms
-    prefix = dealer["prefix"]
-    full_account = prefix + account_id
-    events, total = get_events(limit=limit, offset=offset, account=full_account, dealer_id=did)
-    if total == 0:
-        # Try with short prefix
-        short = prefix.lstrip("0")
-        if short:
-            events, total = get_events(limit=limit, offset=offset, account=short + account_id, dealer_id=did)
-    if total == 0:
-        # Try raw account_id
-        events, total = get_events(limit=limit, offset=offset, account=account_id, dealer_id=did)
+    # In linecard system, events store the 6-digit account_id directly
+    events, total = get_events(limit=limit, offset=offset, account=account_id, dealer_id=did)
     zone_names = get_zone_name_map(dealer_id=did)
     return templates.TemplateResponse("partials/account_events.html", {
         "request": request, "events": events, "total": total,

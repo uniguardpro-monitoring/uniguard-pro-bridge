@@ -30,8 +30,8 @@ PORT = int(os.environ.get("SIA_PORT", "12000"))
 PROTOCOL = os.environ.get("SIA_PROTOCOL", "TCP").upper()
 LOG_DIR = os.environ.get("SIA_LOG_DIR", "/var/log/alarm-receiver")
 DB_PATH = os.environ.get("SIA_DB_PATH", "/opt/alarm-receiver/data/arc.db")
-DEALER_PREFIX = os.environ.get("SIA_DEALER_PREFIX", "001")
-LINECARD_DINS = os.environ.get("SIA_LINECARD_DINS", "01")
+DEALER_PREFIX = os.environ.get("SIA_DEALER_PREFIX", "001")  # Legacy, used for catch-all account setup
+LINECARD_DINS = os.environ.get("SIA_LINECARD_DINS", "01")   # Legacy fallback
 ENCRYPTION_KEY = os.environ.get("SIA_ENCRYPTION_KEY") or None
 ACCOUNT_IDS = os.environ.get("SIA_ACCOUNT_IDS", "")
 
@@ -61,24 +61,41 @@ def get_db():
 
 
 # ---------------------------------------------------------------------------
-# Dealer resolver — maps incoming events to dealer_id
+# Linecard reconstruction — alarm.com splits 8-hex DNIS across R and L fields
+# ---------------------------------------------------------------------------
+
+def _reconstruct_linecard(receiver: str, line: str) -> str:
+    """Reconstruct the 8-hex linecard from SIA R and L fields.
+
+    alarm.com splits an 8-character DNIS like '34A67B58' into:
+      R field: 'R0034A6' (first half, zero-padded with R prefix)
+      L field: 'L007B58' (second half, zero-padded with L prefix)
+
+    We strip the R/L prefix and leading zeros from each, then concatenate.
+    Result is uppercased for consistent matching.
+    """
+    r_part = (receiver or "").lstrip("R").lstrip("0") if receiver else ""
+    l_part = (line or "").lstrip("L").lstrip("0") if line else ""
+    linecard = (r_part + l_part).upper()
+    return linecard
+
+
+# ---------------------------------------------------------------------------
+# Dealer resolver — maps incoming events to dealer_id via linecard/DNIS
 # ---------------------------------------------------------------------------
 
 class DealerResolver:
-    """Resolves incoming SIA events to a dealer_id using cached DB lookups."""
+    """Resolves incoming SIA events to a dealer_id using linecard/DNIS lookup."""
 
     def __init__(self):
-        self._prefix_map = {}     # prefix -> dealer_id
-        self._short_prefix_map = {}  # zero-stripped prefix -> dealer_id
-        self._dnis_map = {}       # dnis -> dealer_id
+        self._dnis_map = {}       # dnis (linecard) -> dealer_id
         self._lock = threading.Lock()
         self._last_load = 0
 
     def load(self):
-        """Load dealer data from the database."""
+        """Load dealer linecard data from the database."""
         try:
             with get_db() as conn:
-                # Check if dealers table exists
                 exists = conn.execute(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='dealers'"
                 ).fetchone()[0]
@@ -87,21 +104,16 @@ class DealerResolver:
                 rows = conn.execute(
                     "SELECT id, prefix, dnis FROM dealers WHERE enabled = 1"
                 ).fetchall()
-            prefix_map = {}
-            short_prefix_map = {}
             dnis_map = {}
             for row in rows:
-                prefix_map[row["prefix"]] = row["id"]
-                short = row["prefix"].lstrip("0")
-                if short:
-                    short_prefix_map[short] = row["id"]
+                # Store with uppercase for consistent matching
+                dnis_map[row["dnis"].upper()] = row["id"]
+                # Also store lowercase and original for fallback
                 dnis_map[row["dnis"]] = row["id"]
             with self._lock:
-                self._prefix_map = prefix_map
-                self._short_prefix_map = short_prefix_map
                 self._dnis_map = dnis_map
                 self._last_load = time.monotonic()
-            logger.info("Loaded %d dealer(s) for event routing", len(rows))
+            logger.info("Loaded %d dealer(s) for linecard-based routing", len(rows))
         except Exception:
             logger.exception("Error loading dealers from database")
 
@@ -110,25 +122,16 @@ class DealerResolver:
         if time.monotonic() - self._last_load > 60:
             self.load()
 
-    def resolve(self, account_id, receiver_id=None):
-        """Resolve a dealer_id from account_id and/or receiver_id.
+    def resolve(self, linecard: str) -> int | None:
+        """Resolve a dealer_id from a reconstructed linecard.
 
-        Returns (dealer_id, matched_prefix) or (None, None).
+        Returns dealer_id or None if unrecognized.
         """
         self._maybe_refresh()
+        if not linecard:
+            return None
         with self._lock:
-            # Try matching by prefix in account_id
-            for prefix, did in self._prefix_map.items():
-                if account_id and account_id.startswith(prefix):
-                    return did, prefix
-            # Try zero-stripped prefix (e.g. '001' -> '1', account '1234')
-            for short, did in self._short_prefix_map.items():
-                if account_id and account_id.startswith(short):
-                    return did, short
-            # Try matching by DNIS/receiver
-            if receiver_id and receiver_id in self._dnis_map:
-                return self._dnis_map[receiver_id], None
-        return None, None
+            return self._dnis_map.get(linecard.upper()) or self._dnis_map.get(linecard)
 
 
 dealer_resolver = DealerResolver()
@@ -266,50 +269,24 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
         if not webhooks:
             return
 
-        # Resolve dealer info for payload
-        dealer_info = {"id": dealer_id}
-        account_info = {"id": event_data.get("account", "")}
+        # Resolve dealer and account info for payload
+        # In the linecard system, event.account IS the account_id directly (no prefix)
+        acct_id = event_data.get("account", "")
+        account_name = ""
+        zone = event_data.get("zone") or ""
+        zone_name = ""
         try:
             with get_db() as conn:
-                drow = conn.execute(
-                    "SELECT prefix, dnis, name FROM dealers WHERE id = ?", (dealer_id,)
-                ).fetchone()
-                if drow:
-                    dealer_info["prefix"] = drow["prefix"]
-                    dealer_info["dnis"] = drow["dnis"]
-                    dealer_info["name"] = drow["name"]
-
-                # Strip prefix to get account portion for name lookup
-                acct_id = event_data.get("account", "")
-                prefix = dealer_info.get("prefix", "")
-                acct_portion = acct_id
-                if prefix and acct_id.startswith(prefix):
-                    acct_portion = acct_id[len(prefix):]
-                elif prefix:
-                    short = prefix.lstrip("0")
-                    if short and acct_id.startswith(short):
-                        acct_portion = acct_id[len(short):]
-
                 arow = conn.execute(
-                    "SELECT name, address, phone, email FROM accounts "
-                    "WHERE account_id = ? AND dealer_id = ?",
-                    (acct_portion, dealer_id),
+                    "SELECT name FROM accounts WHERE account_id = ? AND dealer_id = ?",
+                    (acct_id, dealer_id),
                 ).fetchone()
                 if arow:
-                    account_info["name"] = arow["name"]
-                    account_info["address"] = arow["address"] or ""
-                    account_info["phone"] = arow["phone"] or ""
-                    account_info["email"] = arow["email"] or ""
-                account_info["id"] = acct_portion
-                account_info["full_account"] = acct_id
-
-                # Zone name lookup
-                zone = event_data.get("zone") or ""
-                zone_name = ""
+                    account_name = arow["name"]
                 if zone:
                     zrow = conn.execute(
                         "SELECT zone_name FROM zones WHERE account_id = ? AND dealer_id = ? AND zone_number = ?",
-                        (acct_portion, dealer_id, zone),
+                        (acct_id, dealer_id, zone),
                     ).fetchone()
                     if zrow:
                         zone_name = zrow["zone_name"]
@@ -317,26 +294,18 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
             pass
 
         sia_code = event_data.get("sia_code", {})
-        zone = event_data.get("zone") or ""
-        zone_nm = zone_name if 'zone_name' in dir() else ""
+        sia_type = sia_code.get("type", "")
+        sia_desc = sia_code.get("description", "")
 
         # Build description: "Type - Zone Name" or "Type" or code
         desc_parts = []
-        sia_type = sia_code.get("type", "")
-        sia_desc = sia_code.get("description", "")
         if sia_type:
             desc_parts.append(sia_type)
-        if zone_nm:
-            desc_parts.append(zone_nm)
+        if zone_name:
+            desc_parts.append(zone_name)
         elif sia_desc:
             desc_parts.append(sia_desc)
         description = " - ".join(desc_parts) if desc_parts else event_code
-
-        # Build the full account ID as transmitted (e.g. "002001")
-        full_account = event_data.get("account", "")
-
-        # account_id = just the account portion (e.g. "004"), not the full prefix+account
-        acct_id_short = account_info.get("id", "")
 
         # timestamp as Unix epoch integer
         import calendar
@@ -352,19 +321,17 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
 
         payload = json.dumps({
             "event_id": f"evt_{event_id}",
-            "account_id": acct_id_short,
+            "account_id": acct_id,
             "event_code": event_code,
             "zone": zone_val,
-            "zone_name": zone_nm,
+            "zone_name": zone_name,
             "timestamp": unix_ts,
             "description": description,
             "dealer_id": str(dealer_id),
-            "account_name": account_info.get("name", ""),
+            "account_name": account_name,
         }, default=str)
 
         now = datetime.now(timezone.utc).isoformat()
-        # Get account portion for account_filter matching
-        acct_portion_for_filter = account_info.get("id", "").upper()
 
         with get_db() as conn:
             for wh in webhooks:
@@ -376,7 +343,7 @@ def _enqueue_webhooks(event_data: dict, dealer_id: int, event_id: int = 0) -> No
                         continue
                 # Account filter — if set, only forward events for that account
                 acct_filt = (wh["account_filter"] or "").strip().upper()
-                if acct_filt and acct_portion_for_filter != acct_filt:
+                if acct_filt and acct_id.upper() != acct_filt:
                     continue
                 conn.execute(
                     "INSERT INTO webhook_queue (webhook_id, event_id, payload, "
@@ -421,7 +388,6 @@ def handle_event(event: SIAEvent) -> None:
         sia_code = _extract_sia_code(event)
         event_data = {
             "received_at": datetime.now(timezone.utc).isoformat(),
-            "dealer_prefix": DEALER_PREFIX,
             "account": event.account,
             "code": event.code,
             "message_type": str(event.message_type) if event.message_type else None,
@@ -439,39 +405,39 @@ def handle_event(event: SIAEvent) -> None:
         if sia_code:
             event_data["sia_code"] = sia_code
 
-        # Resolve dealer
-        did, matched_prefix = dealer_resolver.resolve(event.account, event.receiver)
+        # Reconstruct linecard from R + L fields and resolve dealer
+        linecard = _reconstruct_linecard(event.receiver, event.line)
+        did = dealer_resolver.resolve(linecard)
         is_supervision = event.code in SUPERVISION_CODES
 
-        # Validate account — supervision events always pass through
+        # The account_id is the full transmitted value (6-digit, no prefix stripping)
+        acct_id = event.account or ""
+
+        # Validate — supervision events always pass through
         if not is_supervision:
             if did is None:
                 logger.warning(
-                    "REJECTED | No dealer resolved | Account: %s | Code: %s | Receiver: %s",
-                    event.account, event.code, event.receiver,
+                    "REJECTED | Unrecognized linecard | Linecard: %s | Account: %s | Code: %s | R: %s | L: %s",
+                    linecard, event.account, event.code, event.receiver, event.line,
                 )
                 if event.full_message:
                     log_raw_to_file(event.full_message)
                 return
 
-            # Strip matched prefix to get account portion
-            acct_portion = event.account or ""
-            if matched_prefix and acct_portion.startswith(matched_prefix):
-                acct_portion = acct_portion[len(matched_prefix):]
-
-            if not account_validator.is_valid(acct_portion, did):
+            if not account_validator.is_valid(acct_id, did):
                 logger.warning(
-                    "REJECTED | Unregistered account | Dealer: %s | Full: %s | Account: %s | Code: %s",
-                    did, event.account, acct_portion, event.code,
+                    "REJECTED | Unregistered account | Dealer: %s | Account: %s | Code: %s | Linecard: %s",
+                    did, acct_id, event.code, linecard,
                 )
                 if event.full_message:
                     log_raw_to_file(event.full_message)
                 return
 
         logger.info(
-            "ALARM EVENT | Dealer: %s | Account: %s | Code: %s | Zone: %s | Type: %s | Msg: %s",
+            "ALARM EVENT | Dealer: %s | Linecard: %s | Account: %s | Code: %s | Zone: %s | Type: %s | Msg: %s",
             did or "global",
-            event.account,
+            linecard,
+            acct_id,
             event.code,
             event.ri,
             sia_code.get("type", "unknown"),

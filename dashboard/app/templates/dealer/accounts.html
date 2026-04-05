@@ -23,12 +23,12 @@
     </h2>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-            <span class="text-gray-500 text-xs block">Dealer Prefix</span>
-            <span class="font-mono text-white text-lg font-bold">{{ dealer.prefix }}</span>
-        </div>
-        <div>
             <span class="text-gray-500 text-xs block">Linecard / DNIS</span>
             <span class="font-mono text-white text-lg font-bold">{{ dealer.dnis }}</span>
+        </div>
+        <div>
+            <span class="text-gray-500 text-xs block">Dealer</span>
+            <span class="font-mono text-white text-lg font-bold">{{ dealer.name }}</span>
         </div>
         <div>
             <span class="text-gray-500 text-xs block">Receiver Address</span>
@@ -55,7 +55,7 @@
                 </div>
             </div>
             <div class="text-white font-semibold">{{ acct.name }}</div>
-            <div class="text-gray-500 text-xs mt-1 font-mono">Full Account: {{ dealer.prefix }}{{ acct.account_id }} &middot; DNIS: {{ dealer.dnis }}</div>
+            <div class="text-gray-500 text-xs mt-1 font-mono">Account: {{ acct.account_id }} &middot; Linecard: {{ dealer.dnis }}</div>
             {% if acct.address %}<div class="text-gray-400 text-sm mt-1">{{ acct.address }}</div>{% endif %}
             {% if acct.phone %}<div class="text-gray-400 text-sm">{{ acct.phone }}</div>{% endif %}
             {% if acct.email %}<div class="text-gray-400 text-sm">{{ acct.email }}</div>{% endif %}

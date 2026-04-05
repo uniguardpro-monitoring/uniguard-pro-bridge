@@ -19,7 +19,7 @@
         <table class="w-full">
             <thead>
                 <tr class="text-left text-gray-400 text-sm border-b border-gray-700">
-                    <th class="px-4 py-3">Prefix</th>
+                    <th class="px-4 py-3">Linecard</th>
                     <th class="px-4 py-3">Name</th>
                     <th class="px-4 py-3 hidden md:table-cell">Phone</th>
                     <th class="px-4 py-3">Email / Login</th>
@@ -31,7 +31,7 @@
                 {% for d in dealers %}
                 <tr class="hover:bg-gray-700/50" x-data="{ editing: false }">
                     <!-- View mode -->
-                    <td x-show="!editing" class="px-4 py-3 font-mono font-bold text-blue-400">{{ d.prefix }}</td>
+                    <td x-show="!editing" class="px-4 py-3 font-mono font-bold text-blue-400">{{ d.dnis }}</td>
                     <td x-show="!editing" class="px-4 py-3">
                         <a href="{{ P }}/dealers/{{ d.id }}/accounts" class="text-white font-medium hover:text-blue-400 transition">
                             {{ d.name }}
@@ -62,7 +62,7 @@
                     <td x-show="editing" x-cloak colspan="6" class="px-4 py-3">
                         <form method="POST" action="{{ P }}/dealers/{{ d.id }}/edit" class="flex flex-wrap items-center gap-3">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <span class="font-mono text-blue-400 font-bold">{{ d.prefix }}</span>
+                            <span class="font-mono text-blue-400 font-bold">{{ d.dnis }}</span>
                             <input type="text" name="name" value="{{ d.name }}" required placeholder="Name"
                                 class="bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 text-sm w-36">
                             <input type="text" name="phone" value="{{ d.phone or '' }}" placeholder="Phone"
@@ -100,18 +100,11 @@
     <form method="POST" action="{{ P }}/dealers" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label class="block text-gray-300 text-sm font-semibold mb-1">Prefix (3 digits)</label>
-                <input type="text" name="prefix" value="{{ next_prefix }}" readonly
-                    class="w-full bg-gray-600 text-gray-300 border border-gray-600 rounded px-3 py-2 font-mono cursor-not-allowed">
-            </div>
-            <div>
-                <label class="block text-gray-300 text-sm font-semibold mb-1">DNIS</label>
-                <input type="text" value="{{ dnis }}" readonly
-                    class="w-full bg-gray-600 text-gray-300 border border-gray-600 rounded px-3 py-2 font-mono cursor-not-allowed">
-                <input type="hidden" name="dnis" value="{{ dnis }}">
-            </div>
+        <div>
+            <label class="block text-gray-300 text-sm font-semibold mb-1">Linecard (8-hex, auto-generated)</label>
+            <input type="text" name="linecard" value="{{ next_linecard }}" readonly
+                class="w-full bg-gray-600 text-gray-300 border border-gray-600 rounded px-3 py-2 font-mono cursor-not-allowed">
+            <p class="text-gray-500 text-xs mt-1">Unique identifier for signal routing. Program this in alarm.com as the DNIS/linecard.</p>
         </div>
 
         <div>
