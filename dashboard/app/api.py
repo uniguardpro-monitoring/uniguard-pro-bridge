@@ -144,7 +144,7 @@ def _is_rate_limited(key_id: int) -> bool:
     bucket = _rate_buckets[key_id]
     # Purge old entries
     cutoff = now - API_RATE_WINDOW
-    _rate_buckets[prefix] = bucket = [t for t in bucket if t > cutoff]
+    _rate_buckets[key_id] = bucket = [t for t in bucket if t > cutoff]
     if len(bucket) >= API_RATE_LIMIT:
         return True
     bucket.append(now)
