@@ -807,9 +807,23 @@ def get_enabled_webhooks_for_dealer(dealer_id):
 
 def create_webhook(dealer_id, url, secret, description="", event_filter="*",
                    auth_type="hmac", account_filter=None):
-    """Create a new webhook. Returns the new webhook ID."""
+    """Create a new webhook. Returns the new webhook ID.
+
+    Raises ValueError if a webhook with the same URL and account_filter
+    already exists for the dealer (prevents duplicates).
+    """
     now = _now()
     with get_db_rw() as conn:
+        # Check for duplicate: same dealer + URL + account_filter
+        existing = conn.execute(
+            "SELECT id FROM webhooks WHERE dealer_id = ? AND url = ? AND "
+            "(account_filter = ? OR (account_filter IS NULL AND ? IS NULL))",
+            (dealer_id, url, account_filter, account_filter),
+        ).fetchone()
+        if existing:
+            raise ValueError(
+                f"A webhook for this URL and account already exists (webhook ID {existing[0]})"
+            )
         conn.execute(
             "INSERT INTO webhooks (dealer_id, url, secret, description, event_filter, "
             "auth_type, account_filter, enabled, created_at, updated_at) "

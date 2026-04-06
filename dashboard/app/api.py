@@ -708,11 +708,14 @@ async def create_webhook_endpoint(body: WebhookCreate, auth: dict = Depends(get_
     else:
         secret = body.secret or _cfg.WEBHOOK_SECRET or secrets.token_hex(32)
 
-    wh_id = create_webhook(
-        dealer_id=did, url=body.url, secret=secret,
-        description=body.description, event_filter=body.event_filter,
-        auth_type=body.auth_type, account_filter=body.account_filter,
-    )
+    try:
+        wh_id = create_webhook(
+            dealer_id=did, url=body.url, secret=secret,
+            description=body.description, event_filter=body.event_filter,
+            auth_type=body.auth_type, account_filter=body.account_filter,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail={"error": {"code": "CONFLICT", "message": str(e)}})
     wh = get_webhook(wh_id, dealer_id=did)
     # Include secret in creation response only
     wh["secret"] = secret
