@@ -688,19 +688,38 @@ def get_zones(account_id, dealer_id=None):
 
 
 def upsert_zone(account_id, zone_number, zone_name, dealer_id=None):
-    """Insert or update a zone for an account."""
+    """Insert or update a zone for an account. Overwrites if duplicate exists."""
     now = _now()
     with get_db_rw() as conn:
-        existing = conn.execute(
-            "SELECT id FROM zones WHERE account_id = ? AND zone_number = ? AND dealer_id = ?",
-            (account_id, zone_number, dealer_id),
-        ).fetchone()
+        # Handle NULL dealer_id correctly (NULL = NULL is false in SQL)
+        if dealer_id is not None:
+            existing = conn.execute(
+                "SELECT id FROM zones WHERE account_id = ? AND zone_number = ? AND dealer_id = ?",
+                (account_id, zone_number, dealer_id),
+            ).fetchone()
+        else:
+            existing = conn.execute(
+                "SELECT id FROM zones WHERE account_id = ? AND zone_number = ? AND dealer_id IS NULL",
+                (account_id, zone_number),
+            ).fetchone()
+
         if existing:
             conn.execute(
                 "UPDATE zones SET zone_name = ?, updated_at = ? WHERE id = ?",
                 (zone_name, now, existing["id"]),
             )
         else:
+            # Delete any other duplicates for this account+zone before inserting
+            if dealer_id is not None:
+                conn.execute(
+                    "DELETE FROM zones WHERE account_id = ? AND zone_number = ? AND dealer_id = ? AND id != COALESCE(?, -1)",
+                    (account_id, zone_number, dealer_id, existing["id"] if existing else None),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM zones WHERE account_id = ? AND zone_number = ? AND dealer_id IS NULL",
+                    (account_id, zone_number),
+                )
             conn.execute(
                 "INSERT INTO zones (account_id, dealer_id, zone_number, zone_name, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -709,13 +728,18 @@ def upsert_zone(account_id, zone_number, zone_name, dealer_id=None):
 
 
 def delete_zone(account_id, zone_number, dealer_id=None):
-    """Delete a zone by account and zone number."""
-    scope, scope_params = _dealer_scope(dealer_id)
+    """Delete a zone by account and zone number (handles NULL dealer_id)."""
     with get_db_rw() as conn:
-        conn.execute(
-            f"DELETE FROM zones WHERE account_id = ? AND zone_number = ? {scope}",
-            (account_id, zone_number) + scope_params,
-        )
+        if dealer_id is not None:
+            conn.execute(
+                "DELETE FROM zones WHERE account_id = ? AND zone_number = ? AND dealer_id = ?",
+                (account_id, zone_number, dealer_id),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM zones WHERE account_id = ? AND zone_number = ?",
+                (account_id, zone_number),
+            )
 
 
 # ---------------------------------------------------------------------------
